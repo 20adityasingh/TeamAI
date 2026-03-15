@@ -1,0 +1,51 @@
+# General
+.DS_Store
+Thumbs.db
+*.log
+tmp/
+temp/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+.factorypath
+*.swp
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+# Exclude maven wrapper jar if strictly following some practices, but usually wrapper scripts are committed
+# .mvn/wrapper/maven-wrapper.jar
+
+# Spring Boot
+help.md
+HELP.md
+
+# Node.js (for k8s/proxy)
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Docker
+.docker/
+
+# Secrets and Local Configs
+.env
+*.secret
+*.key
+*.pem
+secrets.yaml
+

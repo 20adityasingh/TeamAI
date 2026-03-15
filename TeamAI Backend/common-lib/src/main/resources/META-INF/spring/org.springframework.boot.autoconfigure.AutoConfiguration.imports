@@ -1,0 +1,2 @@
+com.distributed.teamai.common_lib.error.SharedExceptionAutoConfiguration
+com.distributed.teamai.common_lib.security.SharedSecurityAutoConfiguration

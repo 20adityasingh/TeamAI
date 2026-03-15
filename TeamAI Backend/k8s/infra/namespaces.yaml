@@ -1,0 +1,28 @@
+# k8s/infra/namespace.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: distributed-team-ai-ns
+
+---
+# to create a separate ns for previews
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: distributed-team-ai-previews-ns
+
+---
+# configmap for shared config values across services
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: teamai-shared-config
+  namespace: distributed-team-ai-ns
+data:
+  PREVIEW_DOMAIN: "previews.team-ai.live"
+  PREVIEW_NAMESPACE: "distributed-team-ai-previews-ns"
+  PROXY_PORT: "80"
+  APP_FRONTEND_URL: "https://team-ai.live"

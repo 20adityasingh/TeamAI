@@ -1,0 +1,21 @@
+package com.distributed.teamai.intelligence_service.client;
+
+import com.distributed.teamai.common_lib.dto.FileTreeDto;
+import com.distributed.teamai.common_lib.enums.ProjectPermission;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+
+@FeignClient(name = "workspace-service", path = "/workspace", url = "${WORKSPACE_SERVICE_URI:}")
+public interface WorkspaceClient {
+
+    @GetMapping("/internal/v1/projects/{projectId}/files/tree")
+    FileTreeDto getFileTree(@PathVariable("projectId") Long projectId);
+
+    @GetMapping("/internal/v1/projects/{projectId}/files/content")
+    String getFileContent(@PathVariable("projectId") Long projectId, @RequestParam("filePath") String filePath);
+
+    @GetMapping("/internal/v1/projects/{projectId}/permissions")
+    boolean hasPermission(@PathVariable("projectId") Long projectId, @RequestParam("projectPermission") ProjectPermission projectPermission);
+}
