@@ -90,8 +90,8 @@ spec:
               cpu: 100m
               memory: 256Mi
             limits:
-              cpu: 250m
-              memory: 512Mi
+              cpu: 800m
+              memory: 1Gi
           volumeMounts:
             - name: pgdata
               mountPath: /var/lib/postgresql/data

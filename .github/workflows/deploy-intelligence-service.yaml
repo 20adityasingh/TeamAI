@@ -67,4 +67,4 @@ jobs:
       - name: Deploy to AKS
         run: |
           kubectl set image deployment/intelligence-service intelligence-service=${{ env.IMAGE_NAME }}:${{ github.sha }} -n distributed-team-ai-ns
-          kubectl rollout status deployment/intelligence-service -n distributed-team-ai-ns
+          kubectl rollout status deployment/intelligence-service -n distributed-team-ai-ns --timeout=5m

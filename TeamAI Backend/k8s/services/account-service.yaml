@@ -62,8 +62,8 @@ spec:
               cpu: 30m
               memory: 128Mi
             limits:
-              cpu: 150m
-              memory: 384Mi
+              cpu: 800m
+              memory: 512Mi
           readinessProbe:
             httpGet:
               path: /account/actuator/health
