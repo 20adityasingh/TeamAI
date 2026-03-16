@@ -18,6 +18,7 @@ public interface UserMapper {
 
     UserDto toUserDto (User user);
 
+    @Mapping(target = "id", source = "userId")
     UserDto toUserDto (JwtUserPrincipal user);
 
 }
