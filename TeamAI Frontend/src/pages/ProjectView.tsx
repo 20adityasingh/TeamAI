@@ -300,8 +300,8 @@ export function ProjectView() {
             </>
           ) : (
             <>
-              <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
-                <Sparkles className="w-3.5 h-3.5 text-primary" />
+              <div className="w-7 h-7 rounded-sm flex items-center justify-center">
+                <img src="/favicon.png" alt="TeamAI Logo" className="w-5 h-5 object-contain" />
               </div>
               <span className="font-semibold text-sm">Loading...</span>
             </>

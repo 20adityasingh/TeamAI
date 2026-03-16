@@ -38,7 +38,7 @@ public class AccountSecurityConfig {
                         sessionConfig -> sessionConfig.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(
                         auth -> auth
-                                .requestMatchers("/auth/**", "/webhooks/**", "/api/plans", "/actuator/**", "/internal/**").permitAll()
+                                .requestMatchers("/auth/**", "/webhooks/**", "/actuator/**", "/internal/**").permitAll()
                                 .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exceptionHandlingConfigurer -> exceptionHandlingConfigurer
