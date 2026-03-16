@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: team-ai-frontend
+  namespace: distributed-team-ai-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: team-ai-frontend
+  template:
+    metadata:
+      labels:
+        app: team-ai-frontend
+    spec:
+      containers:
+        - name: team-ai-frontend
+          image: aditya1singh/team-ai-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: team-ai-frontend
+  namespace: distributed-team-ai-ns
+spec:
+  type: ClusterIP
+  selector:
+    app: team-ai-frontend
+  ports:
+    - port: 80
+      targetPort: 80

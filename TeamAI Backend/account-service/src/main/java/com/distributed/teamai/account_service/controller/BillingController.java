@@ -41,13 +41,13 @@ public class BillingController {
         return ResponseEntity.ok(subscriptionService.getCurrentSubscription());
     }
 
-    @PostMapping("/api/payment/checkout")
+    @PostMapping("/payment/checkout")
     public ResponseEntity<CheckoutResponse> createCheckoutResponse(
             @RequestBody CheckoutRequest request) {
         return ResponseEntity.ok(paymentService.createCheckoutSessionUrl(request));
     }
 
-    @PostMapping("/api/payment/portal")
+    @PostMapping("/payment/portal")
     public ResponseEntity<PortalResponse> openCustomerPortal() {
         return ResponseEntity.ok(paymentService.openCustomerPortal());
     }

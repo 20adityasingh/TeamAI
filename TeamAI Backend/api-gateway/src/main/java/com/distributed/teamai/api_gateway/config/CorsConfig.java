@@ -20,7 +20,8 @@ public class CorsConfig {
 
         config.setAllowedOrigins(Arrays.asList(
                 "http://localhost:5173",
-                "https://team-ai.live"
+                "http://team-ai.live",
+                "www.team-ai.live"
         ));
 
         config.setMaxAge(3600L);
