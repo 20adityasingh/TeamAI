@@ -4,8 +4,8 @@ on:
   push:
     branches:
       - master
-  paths:
-    - 'TeamAI Backend/workspace-service/**'
+    paths:
+      - 'TeamAI Backend/workspace-service/**'
 
 env:
   IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/distributed-team-ai-workspace-service
