@@ -1,0 +1,71 @@
+name: Deploy Frontend Service
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'TeamAI Frontend/**'
+
+env:
+  IMAGE_NAME: aditya1singh/team-ai-frontend
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Frontend to AKS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './TeamAI Frontend/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: './TeamAI Frontend'
+        run: npm install
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Tag Docker Image
+        working-directory: './TeamAI Frontend'
+        run: |
+          npm run docker:build
+          docker tag ${{ env.IMAGE_NAME }}:latest ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Push Docker Image
+        working-directory: './TeamAI Frontend'
+        run: |
+          npm run docker:push
+          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Authenticate to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get AKS Credentials
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ secrets.AZURE_PROJECT }}
+          cluster-name: ${{ secrets.AZURE_CLUSTER }}
+
+      - name: Deploy to AKS
+        run: |
+          kubectl set image deployment/team-ai-frontend team-ai-frontend=${{ env.IMAGE_NAME }}:${{ github.sha }} -n distributed-team-ai-ns
+          kubectl rollout status deployment/team-ai-frontend -n distributed-team-ai-ns --timeout=5m
