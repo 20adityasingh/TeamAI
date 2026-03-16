@@ -23,6 +23,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Prepare Maven Wrapper (permissions + line endings)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/\r$//' "TeamAI Backend/config-service/mvnw" || true
+          chmod +x "TeamAI Backend/config-service/mvnw"
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
