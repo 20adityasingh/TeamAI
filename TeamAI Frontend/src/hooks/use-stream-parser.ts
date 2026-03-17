@@ -1,37 +1,45 @@
 import { useMemo } from 'react';
 import { ChatEvent, ChatEventType } from '@/lib/types';
 
-// Regex to capture the three specific tags we support
-// Matches: <tag attributes>content</tag>
-// Note: This regex is designed to be lenient for streaming (doesn't require strict closing for the last item)
-const PARSE_REGEX = /<(tool|message|file)(?:[^>]*)>([\s\S]*?)(?:<\/\1>|$)/gi;
+// Regex to capture supported tags: <tool>, <message>, <file>
+// Lenient for streaming: supports missing closing tags for the very last item in the buffer
+const TAG_REGEX = /<(tool|message|file)(?:[^>]*)>([\s\S]*?)(?:<\/\1>|$)/gi;
 const ATTR_REGEX = /(?:path|args)="([^"]+)"/i;
 
 export const useStreamParser = (streamBuffer: string) => {
   return useMemo(() => {
     const events: ChatEvent[] = [];
-    let match: RegExpExecArray | [any, any, any];
+    if (!streamBuffer) return events;
 
-    // Track last index to capture untagged text
     let lastIndex = 0;
+    let match: RegExpExecArray | null;
 
-    while ((match = PARSE_REGEX.exec(streamBuffer)) !== null) {
-      // Capture text BEFORE the tag as a MESSAGE event
+    // Reset regex index
+    TAG_REGEX.lastIndex = 0;
+
+    while ((match = TAG_REGEX.exec(streamBuffer)) !== null) {
+      // 1. Extract and push untagged text (Preamble)
       const preamble = streamBuffer.substring(lastIndex, match.index).trim();
-      if (preamble) {
+      
+      // Filter out partial leaking tags (e.g., if AI starts a tag but regex hasn't caught it yet)
+      // or if it's just a closing tag leak from a previously matched block
+      const cleanPreamble = preamble.replace(/<\/?(message|file|tool)[^>]*>/gi, '').trim();
+      
+      if (cleanPreamble) {
         events.push({
           type: ChatEventType.MESSAGE,
-          content: preamble
+          content: cleanPreamble
         });
       }
 
+      // 2. Extract Tag Content
       const [fullMatch, tagName, content] = match;
       const typeStr = tagName.toLowerCase();
-      lastIndex = PARSE_REGEX.lastIndex;
-
-      // ... rest of the logic ...
-      const openTagMatch = streamBuffer.substring(match.index, match.index + fullMatch.indexOf('>') + 1);
-      const attrMatch = ATTR_REGEX.exec(openTagMatch);
+      
+      // Extract attributes from the opening tag part
+      const openTagEndIndex = fullMatch.indexOf('>') + 1;
+      const openTag = fullMatch.substring(0, openTagEndIndex);
+      const attrMatch = ATTR_REGEX.exec(openTag);
       const attrValue = attrMatch ? attrMatch[1] : undefined;
 
       let type: ChatEventType = ChatEventType.MESSAGE;
@@ -52,17 +60,20 @@ export const useStreamParser = (streamBuffer: string) => {
         filePath,
         metadata
       });
+
+      lastIndex = TAG_REGEX.lastIndex;
     }
 
-    // Capture trailing text
-    if (lastIndex < streamBuffer.length) {
-      const trailing = streamBuffer.substring(lastIndex).trim();
-      if (trailing) {
-        events.push({
-          type: ChatEventType.MESSAGE,
-          content: trailing
-        });
-      }
+    // 3. Extract Trailing Text
+    const trailing = streamBuffer.substring(lastIndex).trim();
+    // Again, filter out any partially formed tags at the very end
+    const cleanTrailing = trailing.replace(/<[^>]*$/g, '').replace(/<\/?(message|file|tool)[^>]*>/gi, '').trim();
+    
+    if (cleanTrailing) {
+      events.push({
+        type: ChatEventType.MESSAGE,
+        content: cleanTrailing
+      });
     }
 
     return events;

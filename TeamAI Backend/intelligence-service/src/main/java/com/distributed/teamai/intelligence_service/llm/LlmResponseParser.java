@@ -20,8 +20,13 @@ public class LlmResponseParser {
 
 
     private static final Pattern GENERIC_TAG_PATTERN = Pattern.compile(
-            "(<(message|file|tool)([^>]*)>)([\\s\\S]*?)(</\\2>)",
-            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+            "<(message|file|tool)([^>]*)>([\\s\\S]*?)(?:</\\1>|$)",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    private static final java.util.regex.Pattern TAG_CLEANUP_PATTERN = java.util.regex.Pattern.compile(
+            "</?(message|file|tool)[^>]*>",
+            java.util.regex.Pattern.CASE_INSENSITIVE
     );
 
     private static final Pattern ATTRIBUTE_PATTERN = Pattern.compile(
@@ -39,21 +44,24 @@ public class LlmResponseParser {
         Matcher matcher = GENERIC_TAG_PATTERN.matcher(fullResponse);
 
         while (matcher.find()) {
-            // Capture text BEFORE the tag as a MESSAGE event
+            // 1. Capture and Clean Preamble
             String preamble = fullResponse.substring(lastIndex, matcher.start()).trim();
-            if (!preamble.isEmpty()) {
+            String cleanPreamble = TAG_CLEANUP_PATTERN.matcher(preamble).replaceAll("").trim();
+            
+            if (!cleanPreamble.isEmpty()) {
                 events.add(ChatEvent.builder()
                         .chatType(ChatEventType.MESSAGE)
                         .status(ChatEventStatus.COMPLETED)
                         .chatMessage(chatMessage)
-                        .content(preamble)
+                        .content(cleanPreamble)
                         .sequenceOrder(orderCount++)
                         .build());
             }
 
-            String tagName = matcher.group(2).toLowerCase();
-            String attributes = matcher.group(3);
-            String content = matcher.group(4).trim();
+            // 2. Capture Tag Content
+            String tagName = matcher.group(1).toLowerCase();
+            String attributes = matcher.group(2);
+            String content = matcher.group(3).trim();
             lastIndex = matcher.end();
 
             Map<String, String> mapAttr = extractAttributes(attributes);
@@ -83,15 +91,17 @@ public class LlmResponseParser {
             events.add(builder.build());
         }
 
-        // Capture any trailing text AFTER the last tag
+        // 3. Capture any trailing text AFTER the last tag
         if (lastIndex < fullResponse.length()) {
             String trailing = fullResponse.substring(lastIndex).trim();
-            if (!trailing.isEmpty()) {
+            String cleanTrailing = TAG_CLEANUP_PATTERN.matcher(trailing).replaceAll("").trim();
+            
+            if (!cleanTrailing.isEmpty()) {
                 events.add(ChatEvent.builder()
                         .chatType(ChatEventType.MESSAGE)
                         .status(ChatEventStatus.COMPLETED)
                         .chatMessage(chatMessage)
-                        .content(trailing)
+                        .content(cleanTrailing)
                         .sequenceOrder(orderCount++)
                         .build());
             }
