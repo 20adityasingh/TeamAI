@@ -12,15 +12,24 @@ export const useStreamParser = (streamBuffer: string) => {
     const events: ChatEvent[] = [];
     let match: RegExpExecArray | [any, any, any];
 
-    // Reset regex index
-    PARSE_REGEX.lastIndex = 0;
+    // Track last index to capture untagged text
+    let lastIndex = 0;
 
     while ((match = PARSE_REGEX.exec(streamBuffer)) !== null) {
+      // Capture text BEFORE the tag as a MESSAGE event
+      const preamble = streamBuffer.substring(lastIndex, match.index).trim();
+      if (preamble) {
+        events.push({
+          type: ChatEventType.MESSAGE,
+          content: preamble
+        });
+      }
+
       const [fullMatch, tagName, content] = match;
       const typeStr = tagName.toLowerCase();
+      lastIndex = PARSE_REGEX.lastIndex;
 
-      // Extract attributes from the opening tag part of the match (we need to re-match the opening tag)
-      // This is a simplified extraction. In production, you might want a more robust attribute parser.
+      // ... rest of the logic ...
       const openTagMatch = streamBuffer.substring(match.index, match.index + fullMatch.indexOf('>') + 1);
       const attrMatch = ATTR_REGEX.exec(openTagMatch);
       const attrValue = attrMatch ? attrMatch[1] : undefined;
@@ -43,6 +52,17 @@ export const useStreamParser = (streamBuffer: string) => {
         filePath,
         metadata
       });
+    }
+
+    // Capture trailing text
+    if (lastIndex < streamBuffer.length) {
+      const trailing = streamBuffer.substring(lastIndex).trim();
+      if (trailing) {
+        events.push({
+          type: ChatEventType.MESSAGE,
+          content: trailing
+        });
+      }
     }
 
     return events;

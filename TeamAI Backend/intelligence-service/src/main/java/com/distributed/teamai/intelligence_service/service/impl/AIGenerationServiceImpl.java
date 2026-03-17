@@ -123,10 +123,12 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                 })
                 .mapNotNull(response -> {
                     if (response.getResults() != null && !response.getResults().isEmpty()) {
-                        return response.getResult().getOutput().getText();
+                        String text = response.getResult().getOutput().getText();
+                        return text != null ? text : "";
                     }
                     return "";
                 })
+                .filter(text -> text != null && !text.isEmpty())
                 .filter(Objects::nonNull)
                 .retryWhen(reactor.util.retry.Retry.backoff(2, java.time.Duration.ofSeconds(1))
                         .filter(throwable -> throwable instanceof org.springframework.ai.tool.execution.ToolExecutionException)
@@ -198,11 +200,19 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                             e.getContent()
                     );
                     log.info("Emitting FileStoreRequestEvent for file: {} in project: {}", e.getFilePath(), projectId);
-                    kafkaTemplate.send("file-store-requests-event", "project-"+projectId ,fileStoreRequestEvent);
+                    kafkaTemplate.send("file-store-requests-event", "project-" + projectId, fileStoreRequestEvent)
+                            .whenComplete((result, ex) -> {
+                                if (ex == null) {
+                                    log.info("Successfully sent FileStoreRequestEvent for file: {}", e.getFilePath());
+                                } else {
+                                    log.error("Failed to send FileStoreRequestEvent for file: {}. Error: {}", e.getFilePath(), ex.getMessage());
+                                }
+                            });
                 });
 
-            chatEventRepository.saveAll(events);
-            log.info("Successfully saved chat messages and {} events for project {}", events.size(), projectId);
+        log.info("Saving {} chat events to database for project {}", events.size(), projectId);
+        chatEventRepository.saveAll(events);
+        log.info("Successfully saved chat messages and events for project {}", projectId);
 
         } catch (Exception e) {
             log.error("Critical error in finalizeChats: {}", e.getMessage(), e);

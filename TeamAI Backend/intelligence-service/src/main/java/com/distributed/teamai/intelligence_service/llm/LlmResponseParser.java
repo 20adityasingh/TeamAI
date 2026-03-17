@@ -28,18 +28,33 @@ public class LlmResponseParser {
             "(path|args)=\"([^\"]+)\""
     );
 
-    public List<ChatEvent> parserChatEvents (String fullResponse , ChatMessage chatMessage){
+    public List<ChatEvent> parserChatEvents(String fullResponse, ChatMessage chatMessage) {
+        log.info("Parsing chat events from response length: {}", fullResponse != null ? fullResponse.length() : 0);
         List<ChatEvent> events = new ArrayList<>();
+        if (fullResponse == null || fullResponse.isEmpty()) return events;
 
         int orderCount = 1;
+        int lastIndex = 0;
 
         Matcher matcher = GENERIC_TAG_PATTERN.matcher(fullResponse);
 
-        while(matcher.find()){
+        while (matcher.find()) {
+            // Capture text BEFORE the tag as a MESSAGE event
+            String preamble = fullResponse.substring(lastIndex, matcher.start()).trim();
+            if (!preamble.isEmpty()) {
+                events.add(ChatEvent.builder()
+                        .chatType(ChatEventType.MESSAGE)
+                        .status(ChatEventStatus.COMPLETED)
+                        .chatMessage(chatMessage)
+                        .content(preamble)
+                        .sequenceOrder(orderCount++)
+                        .build());
+            }
 
             String tagName = matcher.group(2).toLowerCase();
             String attributes = matcher.group(3);
             String content = matcher.group(4).trim();
+            lastIndex = matcher.end();
 
             Map<String, String> mapAttr = extractAttributes(attributes);
 
@@ -54,21 +69,38 @@ public class LlmResponseParser {
                 case "file" -> {
                     builder.chatType(ChatEventType.FILE_EDIT);
                     builder.status(ChatEventStatus.PENDING);
-                    builder.filePath(mapAttr.get("path")); // Required for files
-//                    builder.content(null);
+                    builder.filePath(mapAttr.get("path"));
                 }
                 case "tool" -> {
                     builder.chatType(ChatEventType.TOOL_LOG);
-                    builder.metadata(mapAttr.get("args")); // Store raw file list in metadata
+                    builder.metadata(mapAttr.get("args"));
                 }
-                default -> { continue; }
+                default -> {
+                    continue;
+                }
             }
 
             events.add(builder.build());
         }
 
+        // Capture any trailing text AFTER the last tag
+        if (lastIndex < fullResponse.length()) {
+            String trailing = fullResponse.substring(lastIndex).trim();
+            if (!trailing.isEmpty()) {
+                events.add(ChatEvent.builder()
+                        .chatType(ChatEventType.MESSAGE)
+                        .status(ChatEventStatus.COMPLETED)
+                        .chatMessage(chatMessage)
+                        .content(trailing)
+                        .sequenceOrder(orderCount++)
+                        .build());
+            }
+        }
+
+        log.info("Parsed {} events from response", events.size());
         return events;
     }
+
 
     private Map<String, String> extractAttributes(String attributeString) {
         Map<String, String> attributes = new HashMap<>();
