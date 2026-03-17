@@ -67,4 +67,4 @@ jobs:
       - name: Deploy to AKS
         run: |
           kubectl set image deployment/workspace-service workspace-service=${{ env.IMAGE_NAME }}:${{ github.sha }} -n distributed-team-ai-ns
-          kubectl rollout status deployment/workspace-service -n distributed-team-ai-ns --timeout=5m
+          kubectl rollout status deployment/workspace-service -n distributed-team-ai-ns --timeout=10m

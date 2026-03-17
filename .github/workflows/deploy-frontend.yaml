@@ -68,4 +68,4 @@ jobs:
       - name: Deploy to AKS
         run: |
           kubectl set image deployment/team-ai-frontend team-ai-frontend=${{ env.IMAGE_NAME }}:${{ github.sha }} -n distributed-team-ai-ns
-          kubectl rollout status deployment/team-ai-frontend -n distributed-team-ai-ns --timeout=5m
+          kubectl rollout status deployment/team-ai-frontend -n distributed-team-ai-ns --timeout=10m

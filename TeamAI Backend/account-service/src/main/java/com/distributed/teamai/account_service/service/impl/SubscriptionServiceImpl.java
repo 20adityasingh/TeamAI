@@ -48,18 +48,65 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         ));
 
         if (subscriptionOpt.isPresent()) {
-            return subscriptionMapper.toSubscriptionResponse(subscriptionOpt.get());
+            Subscription sub = subscriptionOpt.get();
+            SubscriptionResponse response = subscriptionMapper.toSubscriptionResponse(sub);
+            PlanDto planWithPrice = populatePrice(response.plan(), sub.getPlan());
+            return new SubscriptionResponse(
+                    planWithPrice,
+                    response.status(),
+                    response.currentPeriodEnd(),
+                    response.tokenUsedThisCycle()
+            );
         }
 
         // Return Free Plan details as default
         Plan freePlan = planRepository.findByNameIgnoreCase("FREE PLAN")
                 .orElseThrow(() -> new ResourceNotFoundException("Plan", "FREE PLAN"));
 
+        PlanDto freePlanDto = subscriptionMapper.toPlanResponse(freePlan);
+        freePlanDto = populatePrice(freePlanDto, freePlan);
+
         return new SubscriptionResponse(
-                subscriptionMapper.toPlanResponse(freePlan),
+                freePlanDto,
                 SubscriptionStatus.FREE.name(),
                 null,
                 0L
+        );
+    }
+
+    private PlanDto populatePrice(PlanDto dto, Plan entity) {
+        String priceString = "Contact Support";
+        try {
+            if (entity.getStripePriceId() != null && !entity.getStripePriceId().isEmpty() && !entity.getStripePriceId().equals("no")) {
+                com.stripe.model.Price stripePrice = com.stripe.model.Price.retrieve(entity.getStripePriceId());
+                if (stripePrice.getUnitAmount() != null) {
+                    double amount = stripePrice.getUnitAmount() / 100.0;
+                    String symbol = "$";
+                    if ("inr".equalsIgnoreCase(stripePrice.getCurrency())) {
+                        symbol = "₹";
+                    } else if ("eur".equalsIgnoreCase(stripePrice.getCurrency())) {
+                        symbol = "€";
+                    }
+                    priceString = String.format("%s%.2f", symbol, amount);
+                    if (priceString.endsWith(".00")) {
+                        priceString = priceString.substring(0, priceString.length() - 3);
+                    }
+                }
+            } else if ("no".equals(entity.getStripePriceId())) {
+                priceString = "Free";
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch price for plan {}: {}", entity.getName(), e.getMessage());
+        }
+
+        return new PlanDto(
+                dto.id(),
+                dto.name(),
+                dto.maxProjects(),
+                dto.maxTokensPerDay(),
+                dto.maxPreviews(),
+                dto.unlimitedAi(),
+                priceString
         );
     }
 

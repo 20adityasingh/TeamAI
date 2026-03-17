@@ -1,5 +1,7 @@
 package com.distributed.teamai.common_lib.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public record PlanDto(
         Long id,
         String name,
@@ -7,6 +9,7 @@ public record PlanDto(
         Integer maxTokensPerDay,
         Integer maxPreviews,
         Boolean unlimitedAi,
-        String price
+        @JsonProperty("Price")
+        String Price
 ) {
 }

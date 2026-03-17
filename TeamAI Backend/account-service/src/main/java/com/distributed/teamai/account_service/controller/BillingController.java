@@ -2,7 +2,9 @@ package com.distributed.teamai.account_service.controller;
 
 import com.distributed.teamai.account_service.dto.subscription.*;
 import com.distributed.teamai.account_service.service.PaymentService;
+import com.distributed.teamai.account_service.service.PlanService;
 import com.distributed.teamai.account_service.service.SubscriptionService;
+import com.distributed.teamai.common_lib.dto.PlanDto;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.model.EventDataObjectDeserializer;
@@ -31,6 +33,7 @@ public class BillingController {
 
     SubscriptionService subscriptionService;
     PaymentService paymentService;
+    PlanService planService;
 
     @Value("${stripe.webhooks.secret}")
     @NonFinal
@@ -39,6 +42,11 @@ public class BillingController {
     @GetMapping("/me/subscription")
     public ResponseEntity<SubscriptionResponse> getMySubscription() {
         return ResponseEntity.ok(subscriptionService.getCurrentSubscription());
+    }
+
+    @GetMapping("/plans")
+    public ResponseEntity<List<PlanDto>> getPlans() {
+        return ResponseEntity.ok(planService.getAllActivePlans());
     }
 
     @PostMapping("/payment/checkout")
