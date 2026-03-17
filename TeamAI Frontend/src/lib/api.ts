@@ -94,6 +94,51 @@ function buildFileTree(paths: { path: string }[]): FileNode[] {
   return root;
 }
 
+// Centralized API call helper
+async function callApi<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const headers = {
+    ...getAuthHeaders(),
+    ...(options.headers || {}),
+  };
+
+  const response = await fetch(`${BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  if (response.status === 401) {
+    // Token expired or invalid
+    removeAuthToken();
+    removeUserInfo();
+    window.location.href = "/login";
+    throw new Error("Session expired. Please login again.");
+  }
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type");
+    let errorMessage = "API request failed";
+    
+    if (contentType && contentType.includes("application/json")) {
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorData.error || errorMessage;
+    } else {
+      errorMessage = await response.text() || errorMessage;
+    }
+    
+    throw new Error(errorMessage);
+  }
+
+  // Handle empty responses
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  return response.json();
+}
+
 export const api = {
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
     const response = await fetch(`${BASE_URL}/api/v1/account/auth/login`, {
@@ -126,271 +171,133 @@ export const api = {
   },
 
   async getFiles(projectId: string): Promise<FileNode[]> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${projectId}/files`, {
-      headers: { ...getAuthHeaders() },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch files");
-    }
-
-    const data: FilesApiResponse = await response.json();
+    const data: FilesApiResponse = await callApi(`/api/v1/workspace/projects/${projectId}/files`);
     return buildFileTree(data.files);
   },
 
   async getFileContent(projectId: string, path: string): Promise<string> {
-    const response = await fetch(
-      `${BASE_URL}/api/v1/workspace/projects/${projectId}/files/content?path=${path}`,
-      {
-        headers: { ...getAuthHeaders() },
-      }
+    const data = await callApi<{ content: string }>(
+      `/api/v1/workspace/projects/${projectId}/files/content?path=${path}`
     );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error(`Error fetching file: ${response.status} ${response.statusText}`);
-      throw new Error("Failed to fetch file content");
-    }
-
     return data.content;
   },
 
   async deploy(projectId: string): Promise<DeployResponse> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${projectId}/deploy`, {
+    return callApi(`/api/v1/workspace/projects/${projectId}/deploy`, {
       method: "POST",
-      headers: { ...getAuthHeaders() },
     });
-
-    if (!response.ok) {
-      throw new Error("Deployment failed");
-    }
-
-    return response.json();
   },
 
   async getProjects(): Promise<ProjectSummaryResponse[]> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects`, {
-      headers: { ...getAuthHeaders() },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch projects");
-    }
-
-    return response.json();
+    return callApi(`/api/v1/workspace/projects`);
   },
 
   async createProject(name: string): Promise<ProjectSummaryResponse> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects`, {
+    return callApi(`/api/v1/workspace/projects`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to create project");
-    }
-
-    return response.json();
   },
 
   async getProject(id: string): Promise<ProjectResponse> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${id}`, {
-      headers: { ...getAuthHeaders() },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch project");
-    }
-
-    return response.json();
+    return callApi(`/api/v1/workspace/projects/${id}`);
   },
 
   async updateProject(id: string, name: string): Promise<ProjectResponse> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${id}`, {
+    return callApi(`/api/v1/workspace/projects/${id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to update project");
-    }
-
-    return response.json();
   },
 
   async deleteProject(id: string): Promise<void> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${id}`, {
+    return callApi(`/api/v1/workspace/projects/${id}`, {
       method: "DELETE",
-      headers: { ...getAuthHeaders() },
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to delete project");
-    }
   },
 
   async downloadProjectZip(id: string): Promise<Blob> {
     // Backend endpoint does not exist yet
     console.warn("downloadProjectZip not implemented", id);
     throw new Error("Download ZIP not supported yet");
-    /*
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${id}/files/download-zip`, {
-      headers: { ...getAuthHeaders() },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to download project");
-    }
-
-    return response.blob();
-    */
   },
 
   async getProjectMembers(projectId: string): Promise<ProjectMember[]> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${projectId}/members`, {
-      headers: { ...getAuthHeaders() },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch project members");
-    }
-
-    return response.json();
+    return callApi(`/api/v1/workspace/projects/${projectId}/members`);
   },
 
   async inviteMember(projectId: string, username: string, role: ProjectRole): Promise<void> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${projectId}/members`, {
+    return callApi(`/api/v1/workspace/projects/${projectId}/members`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, role }),
     });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || "Failed to invite member");
-    }
   },
 
   async updateMemberRole(projectId: string, userId: number, role: ProjectRole): Promise<void> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${projectId}/members/${userId}`, {
+    return callApi(`/api/v1/workspace/projects/${projectId}/members/${userId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to update member role");
-    }
   },
 
   async removeMember(projectId: string, userId: number): Promise<void> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/projects/${projectId}/members/${userId}`, {
+    return callApi(`/api/v1/workspace/projects/${projectId}/members/${userId}`, {
       method: "DELETE",
-      headers: { ...getAuthHeaders() },
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to remove member");
-    }
   },
 
   // Invites
   async getPendingInvites(): Promise<PendingInvite[]> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/invites`, {
-      headers: { ...getAuthHeaders() },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch pending invites");
-    }
-
-    return response.json();
+    return callApi(`/api/v1/workspace/invites`);
   },
 
   async acceptInvite(projectId: number): Promise<void> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/invites/${projectId}/accept`, {
+    return callApi(`/api/v1/workspace/invites/${projectId}/accept`, {
       method: "POST",
-      headers: { ...getAuthHeaders() },
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to accept invite");
-    }
   },
 
   async declineInvite(projectId: number): Promise<void> {
-    const response = await fetch(`${BASE_URL}/api/v1/workspace/invites/${projectId}`, {
+    return callApi(`/api/v1/workspace/invites/${projectId}`, {
       method: "DELETE",
-      headers: { ...getAuthHeaders() },
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to decline invite");
-    }
   },
 
   // Payment & Subscription
   async getPlans(): Promise<PlanResponse[]> {
-    const response = await fetch(`${BASE_URL}/api/v1/account/plans`, {
-      headers: { ...getAuthHeaders() },
-    });
-    if (!response.ok) return []; // Fallback empty if endpoint missing
-    return response.json();
+    try {
+      return await callApi(`/api/v1/account/plans`);
+    } catch (e) {
+      console.warn("Failed to fetch plans", e);
+      return []; // Fallback empty
+    }
   },
 
   // Billing
   async getSubscription(): Promise<SubscriptionResponse> {
-    const response = await fetch(`${BASE_URL}/api/v1/account/me/subscription`, {
-      headers: { ...getAuthHeaders() },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch subscription");
-    }
-
-    return response.json();
+    return callApi(`/api/v1/account/me/subscription`);
   },
 
   async createCheckout(planId: number): Promise<CheckoutResponse> {
-    const response = await fetch(`${BASE_URL}/api/v1/account/payment/checkout`, {
+    return callApi(`/api/v1/account/payment/checkout`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ planId }),
     });
-
-    if (!response.ok) {
-        throw new Error("Failed to create checkout session");
-    }
-
-    return response.json();
   },
 
   async openCustomerPortal(): Promise<PortalResponse> {
-    const response = await fetch(`${BASE_URL}/api/v1/account/payment/portal`, {
+    return callApi(`/api/v1/account/payment/portal`, {
       method: "POST",
-      headers: { ...getAuthHeaders() },
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to open customer portal");
-    }
-
-    return response.json();
   },
 
   async getChatHistory(projectId: string): Promise<ChatMessage[]> {
-    const response = await fetch(`${BASE_URL}/api/v1/intelligence/chat/projects/${projectId}`, {
-      headers: { ...getAuthHeaders() },
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch chat history");
-    }
-
-    return response.json();
+    return callApi(`/api/v1/intelligence/chat/projects/${projectId}`);
   },
 
   async streamChat(
@@ -410,6 +317,13 @@ export const api = {
       signal: controller.signal,
     })
       .then(async (response) => {
+        if (response.status === 401) {
+          removeAuthToken();
+          removeUserInfo();
+          window.location.href = "/login";
+          throw new Error("Session expired. Please login again.");
+        }
+
         if (!response.ok) {
             const errorText = await response.text();
             let errorMessage = "Chat stream failed";
@@ -417,7 +331,6 @@ export const api = {
                 const errorJson = JSON.parse(errorText);
                 if (errorJson.message) errorMessage = errorJson.message;
             } catch (e) {
-                // ignore parsing error, use raw text if available
                 if (errorText) errorMessage = errorText;
             }
             throw new Error(errorMessage);

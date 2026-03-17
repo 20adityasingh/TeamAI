@@ -10,6 +10,7 @@ import io.minio.*;
 import io.minio.messages.Item;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -25,8 +26,10 @@ public class ProjectTemplateServiceImpl implements ProjectTemplateService {
     private final ProjectFileRepository projectFileRepository;
     private final ProjectRepository projectRepository;
 
+    @Value("${minio.bucket-name}")
+    private String TARGET_BUCKET;
+
     private static final String TEMPLATE_BUCKET = "starter-projects";
-    private static final String TARGET_BUCKET = "team-ai-bucket";
     private static final String TEMPLATE_NAME = "react-vite-tailwind-daisyui-starter-main";
 
     @Override
