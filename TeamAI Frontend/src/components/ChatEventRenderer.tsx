@@ -29,7 +29,7 @@ export const ChatEventRenderer = ({ event, isLoading }: { event: ChatEvent, isLo
       return (
         <CollapsibleSection
           icon={<Database className="w-4 h-4 text-amber-400" />}
-          label="Read"
+          label={isLoading ? "Reading" : "Read"}
           subtitle={event.metadata}
           isLoading={isLoading}
         >

@@ -184,14 +184,6 @@ public class AIGenerationServiceImpl implements AiGenerationService {
 
         List<ChatEvent> events = llmResponseParser.parserChatEvents(fullResponse, assistantChatMessage);
 
-        events.addFirst(ChatEvent.builder()
-                .chatType(ChatEventType.THOUGHT)
-                .status(ChatEventStatus.COMPLETED)
-                .chatMessage(assistantChatMessage)
-                .content("Thought for " + duration + "s")
-                .sequenceOrder(0)
-                .build());
-
         events.stream()
                 .filter(e -> e.getChatType() == ChatEventType.FILE_EDIT)
                 .forEach(e -> {
