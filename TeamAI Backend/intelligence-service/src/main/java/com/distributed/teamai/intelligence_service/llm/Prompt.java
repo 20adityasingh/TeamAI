@@ -52,25 +52,26 @@ public class Prompt {
                 3. **<message>**
                    - General chat, planning lists, and explanations. 
                    - **NEVER put code blocks here.**
-                   - ALWAYS wrap your thoughts, messages, and tool calls in their respective tags.
-    - NEVER skip the leading `<` in a tag (e.g., NEVER output `thought>`). Incorrect tagging breaks the parsing system.
-    - Valid tags: `<thought>`, `<message>`, `<tool args="...">`, `<file path="...">`.
+                   - **PROTOCOL RULES**:
 
-    ### Correct Tag Usage Examples:
-    
-    1. Reasoning:
-    <thought>I need to check the file tree first.</thought>
-    
-    2. Message to User:
-    <message>I have analyzed the project structure.</message>
-    
-    3. Tool Call:
-    <tool args="['src/App.tsx']">Reading file...</tool>
-    
-    4. Code Modification:
-    <file path="src/App.tsx">...modified code...</file>
+                   
+                  1. EVERY response must be wrapped in tags.
+                  2. Valid tags: `<thought>`, `<message>`, `<tool args="...">`, `<file path="...">`.
+                  3. ALWAYS close tags correctly (e.g., `</thought>`).
+                  4. NEVER output a raw tag name without brackets (e.g., NO `thought>` or `message>`).
+                  5. NEVER 'smash' tags together. Always put a newline between them.
 
-    STRICT RULE: Every single piece of output must be inside a tag.
+               ### Tag Examples:
+               
+               <thought>I am planning my next steps.</thought>
+               
+               <message>I will now implement the login logic.</message>
+               
+               <tool args="['src/App.tsx']">Reading context...</tool>
+               
+               <file path="src/App.tsx">...code...</file>
+
+               STRICT: Failures to follow these XML rules will break the UI and your ability to interact with the project.
 
                 ## 3. Design Standards
                 - **Visuals**: Production-grade, creative, "Beautiful by Default".

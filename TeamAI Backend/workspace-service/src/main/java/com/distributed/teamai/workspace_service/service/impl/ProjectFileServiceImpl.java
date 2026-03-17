@@ -43,6 +43,21 @@ public class ProjectFileServiceImpl implements ProjectFileService {
     @NonFinal
     String BUCKET_NAME;
 
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        try {
+            boolean found = minioClient.bucketExists(io.minio.BucketExistsArgs.builder().bucket(BUCKET_NAME).build());
+            if (!found) {
+                log.info("Creating bucket: {}", BUCKET_NAME);
+                minioClient.makeBucket(io.minio.MakeBucketArgs.builder().bucket(BUCKET_NAME).build());
+            } else {
+                log.info("Bucket {} already exists.", BUCKET_NAME);
+            }
+        } catch (Exception e) {
+            log.error("Failed to initialize MinIO bucket: {}", e.getMessage(), e);
+        }
+    }
+
     @Override
     public FileTreeDto getFileTree(Long projectId) {
 

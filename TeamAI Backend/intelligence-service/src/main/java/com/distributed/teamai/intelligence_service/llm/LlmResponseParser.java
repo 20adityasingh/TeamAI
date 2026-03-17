@@ -20,26 +20,15 @@ import java.util.regex.Pattern;
 public class LlmResponseParser {
 
 
-    // Aggressive split: split before <, before /, or before naked tag names if they follow a boundary
-    private static final java.util.regex.Pattern TAG_SPLIT_PATTERN = java.util.regex.Pattern.compile(
-            "(?=<|(?<=\\w)/|(?<=[>/])(?i)(thought|message|tool|file))",
-            java.util.regex.Pattern.CASE_INSENSITIVE
-    );
-
-    private static final java.util.regex.Pattern TAG_START_PATTERN = java.util.regex.Pattern.compile(
-            "^<?(thought|tool|message|file)(?:\\s+([^>]*))?>",
-            java.util.regex.Pattern.CASE_INSENSITIVE
+    // A greedy regex that finds tag-like starts and captures everything until the next potential tag start or end of string.
+    // Handles smashed tags (thoughttool), missing brackets (thought>), and unclosed tags.
+    private static final Pattern EVENT_SCANNER = Pattern.compile(
+            "(?i)<?\\/?(thought|message|tool|file)(?:\\s+([^>]*))?>?(.*?)(?=(?:<?\\/?(?:thought|message|tool|file)(?:\\s|\\b|>))|$)",
+            Pattern.DOTALL
     );
 
     private static final Pattern ATTRIBUTE_PATTERN = Pattern.compile(
             "(path|args)=\"([^\"]+)\""
-    );
-
-    /**
-     * Regex to catch leaked tag fragments at the start or end of blocks.
-     */
-    private static final Pattern LEAKED_TAG_CLEANUP = Pattern.compile(
-            "(?i)</?(thought|message|file|tool)>?"
     );
 
     public List<ChatEvent> parserChatEvents(String fullResponse, ChatMessage chatMessage) {
@@ -47,85 +36,80 @@ public class LlmResponseParser {
         List<ChatEvent> rawEvents = new ArrayList<>();
         if (fullResponse == null || fullResponse.isEmpty()) return rawEvents;
 
-        String[] parts = TAG_SPLIT_PATTERN.split(fullResponse);
+        Matcher matcher = EVENT_SCANNER.matcher(fullResponse);
+        while (matcher.find()) {
+            String tagName = matcher.group(1).toLowerCase();
+            String attributes = matcher.group(2);
+            String content = matcher.group(3).trim();
 
-        for (String part : parts) {
-            String trimmedPart = part.trim();
-            if (trimmedPart.isEmpty()) continue;
+            // Ignore empty fragments and noise
+            if (content.isEmpty() && !tagName.equals("thought")) {
+               // We keep empty thoughts to trigger the thinking bar, but skip others if totally empty
+               if (!tagName.equals("message") && !tagName.equals("tool") && !tagName.equals("file")) continue;
+            }
 
-            java.util.regex.Matcher startMatcher = TAG_START_PATTERN.matcher(trimmedPart);
-            if (startMatcher.find()) {
-                String tagName = startMatcher.group(1).toLowerCase();
-                String attributes = startMatcher.group(2);
-                String fullOpenTag = startMatcher.group(0);
+            // Cleanup any leaked closing tag fragments in the content
+            content = content.replaceAll("(?i)</?" + tagName + ">?", "").trim();
+            content = content.replaceAll("(?i)</?[a-z]+>?$", "").trim(); // Clean trailing noise
 
-                // Content is after the tag start
-                String content = trimmedPart.substring(fullOpenTag.length());
-                
-                // Remove any closing tag fragment
-                content = content.replaceAll("(?i)</" + tagName + ">", "");
-                content = content.replaceAll("(?i)</?[a-z]*$", ""); // Clean trailing partials
+            Map<String, String> mapAttr = extractAttributes(attributes);
 
-                Map<String, String> mapAttr = extractAttributes(attributes);
+            ChatEvent.ChatEventBuilder builder = ChatEvent.builder()
+                    .status(ChatEventStatus.COMPLETED)
+                    .chatMessage(chatMessage)
+                    .content(content);
 
-                ChatEvent.ChatEventBuilder builder = ChatEvent.builder()
-                        .status(ChatEventStatus.COMPLETED)
-                        .chatMessage(chatMessage)
-                        .content(content.trim());
-
-                switch (tagName) {
-                    case "thought" -> builder.chatType(ChatEventType.THOUGHT);
-                    case "message" -> builder.chatType(ChatEventType.MESSAGE);
-                    case "file" -> {
-                        builder.chatType(ChatEventType.FILE_EDIT);
-                        builder.status(ChatEventStatus.PENDING);
-                        builder.filePath(mapAttr.get("path"));
-                    }
-                    case "tool" -> {
-                        builder.chatType(ChatEventType.TOOL_LOG);
-                        builder.metadata(mapAttr.get("args"));
-                    }
+            switch (tagName) {
+                case "thought" -> builder.chatType(ChatEventType.THOUGHT);
+                case "message" -> builder.chatType(ChatEventType.MESSAGE);
+                case "file" -> {
+                    builder.chatType(ChatEventType.FILE_EDIT);
+                    builder.status(ChatEventStatus.PENDING);
+                    builder.filePath(mapAttr.get("path"));
                 }
-                rawEvents.add(builder.build());
-            } else {
-                // Untagged free-text block - clean leaked markers
-                String cleanContent = LEAKED_TAG_CLEANUP.matcher(trimmedPart).replaceAll("").trim();
-                
-                if (!cleanContent.isEmpty()) {
-                    rawEvents.add(ChatEvent.builder()
-                            .chatType(ChatEventType.MESSAGE)
-                            .status(ChatEventStatus.COMPLETED)
-                            .chatMessage(chatMessage)
-                            .content(cleanContent)
-                            .build());
+                case "tool" -> {
+                    builder.chatType(ChatEventType.TOOL_LOG);
+                    builder.metadata(mapAttr.get("args"));
                 }
             }
+            rawEvents.add(builder.build());
         }
 
-        // Merge adjacent same-type events (especially THOUGHT and MESSAGE)
+        // Fallback: If no tags were found at all, treat the whole thing as one message
+        if (rawEvents.isEmpty() && !fullResponse.trim().isEmpty()) {
+            rawEvents.add(ChatEvent.builder()
+                    .chatType(ChatEventType.MESSAGE)
+                    .status(ChatEventStatus.COMPLETED)
+                    .chatMessage(chatMessage)
+                    .content(fullResponse.trim())
+                    .build());
+        }
+
+        // Merge adjacent same-type events (collapses redundant Thinking bars and split messages)
         List<ChatEvent> mergedEvents = new ArrayList<>();
         for (ChatEvent event : rawEvents) {
             if (!mergedEvents.isEmpty()) {
                 ChatEvent last = mergedEvents.get(mergedEvents.size() - 1);
                 boolean sameType = last.getChatType() == event.getChatType();
                 boolean mergeable = sameType && (event.getChatType() == ChatEventType.THOUGHT || event.getChatType() == ChatEventType.MESSAGE);
-                // For file/tool, merge only if same metadata/path (unlikely to happen in same stream but safer)
-                boolean sameMetadata = Objects.equals(last.getFilePath(), event.getFilePath()) && Objects.equals(last.getMetadata(), event.getMetadata());
-                
-                if (mergeable && sameMetadata) {
-                    last.setContent(last.getContent() + "\n" + event.getContent());
+                boolean sameTarget = Objects.equals(last.getFilePath(), event.getFilePath()) && Objects.equals(last.getMetadata(), event.getMetadata());
+
+                if (mergeable && sameTarget) {
+                    // Append content with space if it's thoughts or messages
+                    String separator = (last.getContent().isEmpty() || event.getContent().isEmpty()) ? "" : "\n";
+                    last.setContent(last.getContent() + separator + event.getContent());
                     continue;
                 }
             }
             mergedEvents.add(event);
         }
 
-        // Assign sequence orders
+        // Set sequence orders
         for (int i = 0; i < mergedEvents.size(); i++) {
             mergedEvents.get(i).setSequenceOrder(i + 1);
         }
 
-        log.info("Parsed and merged into {} events", mergedEvents.size());
+        log.info("Successfully parsed and merged response into {} events", mergedEvents.size());
         return mergedEvents;
     }
 

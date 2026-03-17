@@ -15,56 +15,45 @@ const extractAttributes = (attrString: string) => {
 
 export const useStreamParser = (streamBuffer: string) => {
   return useMemo(() => {
-    // Aggressive split: split before <, before /, or before naked tag names if they follow a boundary
-    const parts = streamBuffer.split(/(?=<|(?<=\w)\/|(?<=[>/])(?:thought|message|tool|file))/i);
+    // Greedy regex scanner for the frontend
+    const EVENT_SCANNER = /<?\/?(thought|message|tool|file)(?:\s+([^>]*))?>?(.*?)(?=(?:<?\/?(?:thought|message|tool|file)(?:\s|\b|>))|$)/gsi;
 
     const rawEvents: ChatEvent[] = [];
+    let match;
 
-    parts.forEach((part) => {
-      const trimmedPart = part.trim();
-      if (!trimmedPart) return;
+    while ((match = EVENT_SCANNER.exec(streamBuffer)) !== null) {
+      const tagName = match[1].toLowerCase();
+      const attributes = match[2] || "";
+      let content = match[3].trim();
 
-      const startMatch = trimmedPart.match(/^<?(thought|message|tool|file)(?:\s+([^>]*))?>/i);
+      // Cleanup fragments
+      content = content.replace(new RegExp(`</?${tagName}>?`, "gi"), "").trim();
+      content = content.replace(/<\/?[a-z]+>?$/i, "").trim();
 
-      if (startMatch) {
-        const tagName = startMatch[1].toLowerCase();
-        const attributes = startMatch[2] || "";
-        const fullOpenTag = startMatch[0];
+      const mapAttr = extractAttributes(attributes);
 
-        let content = trimmedPart.substring(fullOpenTag.length).trim();
-
-        // Strip closing tag fragments
-        content = content.replace(new RegExp(`</${tagName}>`, "gi"), "").trim();
-        content = content.replace(/<\/?[a-z]*$/i, "").trim();
-
-        const mapAttr = extractAttributes(attributes);
-
-        switch (tagName) {
-          case "thought":
-            rawEvents.push({ type: ChatEventType.THOUGHT, content });
-            break;
-          case "message":
-            rawEvents.push({ type: ChatEventType.MESSAGE, content });
-            break;
-          case "tool":
-            rawEvents.push({ type: ChatEventType.TOOL_LOG, content, metadata: mapAttr.args });
-            break;
-          case "file":
-            rawEvents.push({ type: ChatEventType.FILE_EDIT, content, filePath: mapAttr.path });
-            break;
-        }
-      } else {
-        const cleanContent = trimmedPart
-          .replace(/<\/?(thought|message|tool|file)>?/gi, "")
-          .trim();
-
-        if (cleanContent) {
-          rawEvents.push({ type: ChatEventType.MESSAGE, content: cleanContent });
-        }
+      switch (tagName) {
+        case "thought":
+          rawEvents.push({ type: ChatEventType.THOUGHT, content });
+          break;
+        case "message":
+          rawEvents.push({ type: ChatEventType.MESSAGE, content });
+          break;
+        case "tool":
+          rawEvents.push({ type: ChatEventType.TOOL_LOG, content, metadata: mapAttr.args });
+          break;
+        case "file":
+          rawEvents.push({ type: ChatEventType.FILE_EDIT, content, filePath: mapAttr.path });
+          break;
       }
-    });
+    }
 
-    // Merge adjacent events of the same type (especially THOUGHT and MESSAGE)
+    // Fallback: If no tags matched yet there is content
+    if (rawEvents.length === 0 && streamBuffer.trim().length > 0) {
+      rawEvents.push({ type: ChatEventType.MESSAGE, content: streamBuffer.trim() });
+    }
+
+    // Merge adjacent events of the same type (collapses Thinking bars)
     const mergedEvents: ChatEvent[] = [];
     rawEvents.forEach((event) => {
       if (
@@ -72,7 +61,8 @@ export const useStreamParser = (streamBuffer: string) => {
         mergedEvents[mergedEvents.length - 1].type === event.type &&
         (event.type === ChatEventType.THOUGHT || event.type === ChatEventType.MESSAGE)
       ) {
-        mergedEvents[mergedEvents.length - 1].content += "\n" + event.content;
+        // Only merge if they don't have different targets
+        mergedEvents[mergedEvents.length - 1].content += (mergedEvents[mergedEvents.length - 1].content ? "\n" : "") + event.content;
       } else {
         mergedEvents.push(event);
       }
