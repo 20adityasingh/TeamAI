@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Bot, ThumbsUp, ThumbsDown, Copy, RotateCcw, MoreHorizontal, FileCode } from "lucide-react";
+import { Send, Loader2, Bot, ThumbsUp, ThumbsDown, Copy, RotateCcw, MoreHorizontal, FileCode, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
@@ -20,12 +20,13 @@ export interface ChatMessage {
 interface ChatPanelProps {
   messages: ChatMessage[];
   onSendMessage: (message: string) => void;
+  onStop?: () => void;
   isStreaming: boolean;
   isLoading?: boolean;
   readOnly?: boolean;
 }
 
-export function ChatPanel({ messages, onSendMessage, isStreaming, isLoading, readOnly }: ChatPanelProps) {
+export function ChatPanel({ messages, onSendMessage, onStop, isStreaming, isLoading, readOnly }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -107,13 +108,18 @@ export function ChatPanel({ messages, onSendMessage, isStreaming, isLoading, rea
             rows={1}
           />
           <Button
-            type="submit"
+            type={isStreaming ? "button" : "submit"}
             size="icon"
-            disabled={!input.trim() || isStreaming || readOnly}
-            className="absolute right-2 bottom-2 h-8 w-8 rounded-lg"
+            onClick={isStreaming ? onStop : undefined}
+            disabled={(!input.trim() && !isStreaming) || readOnly}
+            className={`absolute right-2 bottom-2 h-8 w-8 rounded-lg transition-all duration-200 ${
+              isStreaming 
+                ? "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20 scale-105" 
+                : ""
+            }`}
           >
             {isStreaming ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Square className="w-3.5 h-3.5 fill-current" />
             ) : (
               <Send className="w-4 h-4" />
             )}

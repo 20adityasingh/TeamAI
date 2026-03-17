@@ -89,8 +89,37 @@ export function ProjectView() {
     navigate("/login");
   };
 
+  // For stream cancellation
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const handleStop = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsStreaming(false);
+      
+      // Update the last message to show it was stopped
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === 'assistant' && last.isStreaming) {
+          return [
+            ...prev.slice(0, -1),
+            { ...last, isStreaming: false }
+          ];
+        }
+        return prev;
+      });
+    }
+  }, []);
+
   const handleSendMessage = useCallback((content: string) => {
     if (!projectId) return;
+
+    // Cancel any existing stream before starting a new one
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
 
     // Reset edited files tracker
     currentEditedFilesRef.current = [];
@@ -117,11 +146,11 @@ export function ProjectView() {
 
     setMessages((prev) => [...prev, aiMessage]);
 
-    const cleanup = api.streamChat(
+    api.streamChat(
       projectId,
       content,
       (chunk) => {
-        // Append chunk to streaming message (character by character)
+        // Append chunk to streaming message
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === aiMessageId
@@ -158,9 +187,15 @@ export function ProjectView() {
           )
         );
         setIsStreaming(false);
+        abortControllerRef.current = null;
       },
       (error) => {
-        // Handle error
+        // Handle error (including cancellation)
+        if (error.name === 'AbortError') {
+            console.log("Stream aborted by user");
+            return;
+        }
+
         console.error("Chat stream error:", error);
 
         // Find the message in state
@@ -169,17 +204,18 @@ export function ProjectView() {
             m.id === aiMessageId
               ? {
                 ...m,
-                content: `<message>${error.message || "Sorry, an error occurred."}</message>`, // content will be the error message
+                content: m.content + `\n\n⚠️ **Error**: ${error.message || "Sorry, an error occurred."}`,
                 isStreaming: false
               }
               : m
           );
         });
         setIsStreaming(false);
-      }
+        abortControllerRef.current = null;
+      },
+      abortControllerRef.current.signal
     );
 
-    return cleanup;
   }, [projectId, toast]);
 
   // Listen for runtime errors from the preview iframe
@@ -425,6 +461,7 @@ export function ProjectView() {
               <ChatPanel
                 messages={messages}
                 onSendMessage={handleSendMessage}
+                onStop={handleStop}
                 isStreaming={isStreaming}
                 isLoading={isLoadingHistory}
                 readOnly={project?.role === 'VIEWER'}

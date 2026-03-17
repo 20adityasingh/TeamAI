@@ -302,19 +302,24 @@ export const api = {
 
   async streamChat(
     projectId: string,
-    message: string,
-    onChunk: (chunk: string) => void,
+    content: string,
+    onChunk: (text: string) => void,
     onFile: (path: string, content: string) => void,
     onComplete: () => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    signal?: AbortSignal
   ) {
-    const controller = new AbortController();
+    // The original code used a local AbortController and returned its abort function.
+    // The instruction implies passing an external signal.
+    // We will use the provided signal if available, otherwise create a local one.
+    const localController = signal ? undefined : new AbortController();
+    const effectiveSignal = signal || localController?.signal;
 
     fetch(`${BASE_URL}/api/v1/intelligence/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify({ message, projectId }),
-      signal: controller.signal,
+      body: JSON.stringify({ message: content, projectId }),
+      signal: effectiveSignal,
     })
       .then(async (response) => {
         if (response.status === 401) {
@@ -427,7 +432,11 @@ export const api = {
         }
       });
 
-    return () => controller.abort();
+    return () => {
+      if (localController) {
+        localController.abort();
+      }
+    };
   }
 
 };

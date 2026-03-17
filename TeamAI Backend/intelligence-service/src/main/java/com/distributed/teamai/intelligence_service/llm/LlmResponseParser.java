@@ -19,13 +19,13 @@ import java.util.regex.Pattern;
 public class LlmResponseParser {
 
 
-    private static final Pattern GENERIC_TAG_PATTERN = Pattern.compile(
-            "<(message|file|tool)([^>]*)>([\\s\\S]*?)(?:</\\1>|$)",
-            Pattern.CASE_INSENSITIVE
+    private static final java.util.regex.Pattern TAG_SPLIT_PATTERN = java.util.regex.Pattern.compile(
+            "(?=<thought|<tool|<message|<file)",
+            java.util.regex.Pattern.CASE_INSENSITIVE
     );
 
-    private static final java.util.regex.Pattern TAG_CLEANUP_PATTERN = java.util.regex.Pattern.compile(
-            "</?(message|file|tool)[^>]*>",
+    private static final java.util.regex.Pattern TAG_START_PATTERN = java.util.regex.Pattern.compile(
+            "<(thought|tool|message|file)(?:\\s+([^>]*))?>",
             java.util.regex.Pattern.CASE_INSENSITIVE
     );
 
@@ -38,72 +38,65 @@ public class LlmResponseParser {
         List<ChatEvent> events = new ArrayList<>();
         if (fullResponse == null || fullResponse.isEmpty()) return events;
 
+        String[] parts = TAG_SPLIT_PATTERN.split(fullResponse);
         int orderCount = 1;
-        int lastIndex = 0;
 
-        Matcher matcher = GENERIC_TAG_PATTERN.matcher(fullResponse);
+        for (String part : parts) {
+            String trimmedPart = part.trim();
+            if (trimmedPart.isEmpty()) continue;
 
-        while (matcher.find()) {
-            // 1. Capture and Clean Preamble
-            String preamble = fullResponse.substring(lastIndex, matcher.start()).trim();
-            String cleanPreamble = TAG_CLEANUP_PATTERN.matcher(preamble).replaceAll("").trim();
-            
-            if (!cleanPreamble.isEmpty()) {
-                events.add(ChatEvent.builder()
-                        .chatType(ChatEventType.MESSAGE)
+            java.util.regex.Matcher startMatcher = TAG_START_PATTERN.matcher(trimmedPart);
+            if (startMatcher.find() && startMatcher.start() == 0) {
+                String tagName = startMatcher.group(1).toLowerCase();
+                String attributes = startMatcher.group(2);
+                String fullOpenTag = startMatcher.group(0);
+
+                // Content is everything after the opening tag
+                String content = trimmedPart.substring(fullOpenTag.length());
+                
+                // Remove closing tag if present
+                String closingTag = "</" + tagName + ">";
+                if (content.toLowerCase().endsWith(closingTag.toLowerCase())) {
+                    content = content.substring(0, content.length() - closingTag.length());
+                } else {
+                    // Cleanup any partial closing tags at the very end
+                    content = content.replaceAll("</?[a-z]*$", "");
+                }
+
+                Map<String, String> mapAttr = extractAttributes(attributes);
+
+                ChatEvent.ChatEventBuilder builder = ChatEvent.builder()
                         .status(ChatEventStatus.COMPLETED)
                         .chatMessage(chatMessage)
-                        .content(cleanPreamble)
-                        .sequenceOrder(orderCount++)
-                        .build());
-            }
+                        .content(content.trim())
+                        .sequenceOrder(orderCount++);
 
-            // 2. Capture Tag Content
-            String tagName = matcher.group(1).toLowerCase();
-            String attributes = matcher.group(2);
-            String content = matcher.group(3).trim();
-            lastIndex = matcher.end();
-
-            Map<String, String> mapAttr = extractAttributes(attributes);
-
-            ChatEvent.ChatEventBuilder builder = ChatEvent.builder()
-                    .status(ChatEventStatus.COMPLETED)
-                    .chatMessage(chatMessage)
-                    .content(content)
-                    .sequenceOrder(orderCount++);
-
-            switch (tagName) {
-                case "message" -> builder.chatType(ChatEventType.MESSAGE);
-                case "file" -> {
-                    builder.chatType(ChatEventType.FILE_EDIT);
-                    builder.status(ChatEventStatus.PENDING);
-                    builder.filePath(mapAttr.get("path"));
+                switch (tagName) {
+                    case "thought" -> builder.chatType(ChatEventType.THOUGHT);
+                    case "message" -> builder.chatType(ChatEventType.MESSAGE);
+                    case "file" -> {
+                        builder.chatType(ChatEventType.FILE_EDIT);
+                        builder.status(ChatEventStatus.PENDING);
+                        builder.filePath(mapAttr.get("path"));
+                    }
+                    case "tool" -> {
+                        builder.chatType(ChatEventType.TOOL_LOG);
+                        builder.metadata(mapAttr.get("args"));
+                    }
                 }
-                case "tool" -> {
-                    builder.chatType(ChatEventType.TOOL_LOG);
-                    builder.metadata(mapAttr.get("args"));
+                events.add(builder.build());
+            } else {
+                // Untagged free-text block
+                String cleanContent = trimmedPart.replaceAll("(?i)</?(thought|message|file|tool)[^>]*>", "").trim();
+                if (!cleanContent.isEmpty()) {
+                    events.add(ChatEvent.builder()
+                            .chatType(ChatEventType.MESSAGE)
+                            .status(ChatEventStatus.COMPLETED)
+                            .chatMessage(chatMessage)
+                            .content(cleanContent)
+                            .sequenceOrder(orderCount++)
+                            .build());
                 }
-                default -> {
-                    continue;
-                }
-            }
-
-            events.add(builder.build());
-        }
-
-        // 3. Capture any trailing text AFTER the last tag
-        if (lastIndex < fullResponse.length()) {
-            String trailing = fullResponse.substring(lastIndex).trim();
-            String cleanTrailing = TAG_CLEANUP_PATTERN.matcher(trailing).replaceAll("").trim();
-            
-            if (!cleanTrailing.isEmpty()) {
-                events.add(ChatEvent.builder()
-                        .chatType(ChatEventType.MESSAGE)
-                        .status(ChatEventStatus.COMPLETED)
-                        .chatMessage(chatMessage)
-                        .content(cleanTrailing)
-                        .sequenceOrder(orderCount++)
-                        .build());
             }
         }
 

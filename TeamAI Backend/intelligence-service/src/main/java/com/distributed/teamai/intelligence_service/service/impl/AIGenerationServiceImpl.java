@@ -75,7 +75,7 @@ public class AIGenerationServiceImpl implements AiGenerationService {
         AtomicReference<Long> endTime = new AtomicReference<>(0L);
         AtomicReference<Usage> usageRef = new AtomicReference<>();
 
-        return chatClient.prompt()
+        Flux<String> aiStream = chatClient.prompt()
                 .system(Prompt.CODE_GENERATION_SYSTEM_PROMPT)
                 .user(message)
                 .tools(readFiles)
@@ -107,19 +107,22 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                     }
 
                 })
-                .doOnComplete(() -> {
-                    Long duration = (endTime.get() - startTime.get()) / 1000;
-                    Schedulers.boundedElastic().schedule(() -> {
-                        try {
-                            finalizeChats(userId, message, chatSession, fullResponseBuffer.toString(), duration,
-                                    usageRef.get());
-                        } catch (Exception e) {
-                            log.error("Failed to finalize chats for project {}: {}", projectId, e.getMessage(), e);
-                        }
-                    });
-                })
-                .doOnError(error -> {
-                    log.error("Error during streaming for Project ID: {}", projectId, error);
+                .doFinally(signal -> {
+                    // Finalize even if cancelled or error, as long as we have content
+                    if (fullResponseBuffer.length() > 0 && endTime.get() > 0) {
+                        Long duration = (endTime.get() - startTime.get()) / 1000;
+                        log.info("Finalizing stream with signal: {}. Duration: {}s", signal, duration);
+                        Schedulers.boundedElastic().schedule(() -> {
+                            try {
+                                finalizeChats(userId, message, chatSession, fullResponseBuffer.toString(), duration,
+                                        usageRef.get());
+                            } catch (Exception e) {
+                                log.error("Failed to finalize chats for project {}: {}", projectId, e.getMessage(), e);
+                            }
+                        });
+                        // Clear buffer so we don't finalize twice if complete + finally trigger (unlikely in this setup)
+                        fullResponseBuffer.setLength(0);
+                    }
                 })
                 .mapNotNull(response -> {
                     if (response.getResults() != null && !response.getResults().isEmpty()) {
@@ -143,6 +146,9 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                     return Flux.just(
                             "\n\n⚠️ Sorry, I encountered an error while processing your request. Please try again.");
                 });
+
+        // Prepend a virtual thought tag to trigger real-time UI "Thinking" bar
+        return Flux.concat(Flux.just("<thought>Analyzing request and checking context...</thought>"), aiStream);
     }
 
     private void finalizeChats(Long userId, String userMessage, ChatSession chatSession, String fullResponse,
