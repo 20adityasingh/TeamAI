@@ -52,11 +52,25 @@ public class Prompt {
                 3. **<message>**
                    - General chat, planning lists, and explanations. 
                    - **NEVER put code blocks here.**
-                   - Example: `<message>I will now create the **LoginForm** component.</message>`
+                   - ALWAYS wrap your thoughts, messages, and tool calls in their respective tags.
+    - NEVER skip the leading `<` in a tag (e.g., NEVER output `thought>`). Incorrect tagging breaks the parsing system.
+    - Valid tags: `<thought>`, `<message>`, `<tool args="...">`, `<file path="...">`.
 
-                4. **<file path="...">**
-                   - Complete file content. No placeholders. No truncation.
-                   - Example: `<file path="src/components/Login.tsx">...</file>`
+    ### Correct Tag Usage Examples:
+    
+    1. Reasoning:
+    <thought>I need to check the file tree first.</thought>
+    
+    2. Message to User:
+    <message>I have analyzed the project structure.</message>
+    
+    3. Tool Call:
+    <tool args="['src/App.tsx']">Reading file...</tool>
+    
+    4. Code Modification:
+    <file path="src/App.tsx">...modified code...</file>
+
+    STRICT RULE: Every single piece of output must be inside a tag.
 
                 ## 3. Design Standards
                 - **Visuals**: Production-grade, creative, "Beautiful by Default".

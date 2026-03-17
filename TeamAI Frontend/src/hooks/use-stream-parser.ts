@@ -3,81 +3,72 @@ import { ChatEvent, ChatEventType } from '@/lib/types';
 
 const TAG_START_REGEX = /<(thought|tool|message|file)(?:\s+[^>]*)?>/gi;
 const ATTR_REGEX = /(?:path|args)="([^"]+)"/i;
+const extractAttributes = (attrString: string) => {
+  const attrs: { [key: string]: string } = {};
+  const regex = /(\w+)="([^"]*)"/g;
+  let match;
+  while ((match = regex.exec(attrString)) !== null) {
+    attrs[match[1]] = match[2];
+  }
+  return attrs;
+};
 
 export const useStreamParser = (streamBuffer: string) => {
   return useMemo(() => {
     const events: ChatEvent[] = [];
     if (!streamBuffer) return events;
 
-    // 1. Split buffer by tag starts while keeping them as delimiters
-    // This allows us to treat each block as a potential event
-    const parts = streamBuffer.split(/(?=<thought|<tool|<message|<file)/i);
-    
-    for (const part of parts) {
+    // 1. Split by anything that LOOKS like a tag start, including missing brackets
+    // e.g., <thought, <message, <tool, <file, thought>, message>, tool>, file>
+    const parts = streamBuffer.split(/(?=<thought|<message|<tool|<file|thought>|message>|tool>|file>)/i);
+
+    const eventsToReturn: ChatEvent[] = [];
+
+    parts.forEach((part) => {
       const trimmedPart = part.trim();
-      if (!trimmedPart) continue;
+      if (!trimmedPart) return;
 
-      // Reset regex for each part
-      TAG_START_REGEX.lastIndex = 0;
-      const match = TAG_START_REGEX.exec(trimmedPart);
+      const startMatch = trimmedPart.match(/^<?(thought|message|tool|file)(?:\s+([^>]*))?>/i);
 
-      if (match) {
-        const tagName = match[1].toLowerCase();
-        const fullOpenTag = match[0];
-        
-        // Content is everything after the opening tag, 
-        // minus the closing tag if it exists
+      if (startMatch) {
+        const tagName = startMatch[1].toLowerCase();
+        const attributes = startMatch[2] || "";
+        const fullOpenTag = startMatch[0];
+
+        let content = trimmedPart.substring(fullOpenTag.length).trim();
+
         const closingTag = `</${tagName}>`;
-        let content = trimmedPart.slice(fullOpenTag.length);
-        
         if (content.toLowerCase().endsWith(closingTag.toLowerCase())) {
-          content = content.slice(0, -closingTag.length);
-        } else {
-          // If it's not closed, cleanup any partial closing tag junk at the end
-          content = content.replace(/<\/?[a-z]*$/i, '');
+          content = content.substring(0, content.length - closingTag.length).trim();
         }
 
-        const attrMatch = ATTR_REGEX.exec(fullOpenTag);
-        const attrValue = attrMatch ? attrMatch[1] : undefined;
-
-        let type: ChatEventType = ChatEventType.MESSAGE;
-        let filePath: string | undefined;
-        let metadata: string | undefined;
+        const mapAttr = extractAttributes(attributes);
 
         switch (tagName) {
-          case 'thought': type = ChatEventType.THOUGHT; break;
-          case 'tool': 
-            type = ChatEventType.TOOL_LOG; 
-            metadata = attrValue;
+          case "thought":
+            eventsToReturn.push({ type: ChatEventType.THOUGHT, content });
             break;
-          case 'file':
-            type = ChatEventType.FILE_EDIT;
-            filePath = attrValue;
+          case "message":
+            eventsToReturn.push({ type: ChatEventType.MESSAGE, content });
             break;
-          case 'message':
-            type = ChatEventType.MESSAGE;
+          case "tool":
+            eventsToReturn.push({ type: ChatEventType.TOOL_LOG, content, metadata: mapAttr.args });
+            break;
+          case "file":
+            eventsToReturn.push({ type: ChatEventType.FILE_EDIT, content, filePath: mapAttr.path });
             break;
         }
-
-        events.push({
-          type,
-          content: content.trim(),
-          filePath,
-          metadata
-        });
       } else {
-        // Untagged free-text block (Preamble or Trailing)
-        // Clean up any leaked tag artifacts
-        const cleanContent = trimmedPart.replace(/<\/?(message|file|tool|thought)[^>]*>/gi, '').trim();
+        const cleanContent = trimmedPart
+          .replace(/<\/?(thought|message|tool|file)>?/gi, "")
+          .trim();
+
         if (cleanContent) {
-          events.push({
-            type: ChatEventType.MESSAGE,
-            content: cleanContent
-          });
+          eventsToReturn.push({ type: ChatEventType.MESSAGE, content: cleanContent });
         }
       }
-    }
+    });
 
-    return events;
+    return eventsToReturn;
   }, [streamBuffer]);
 };

@@ -36,22 +36,23 @@ public class FileStorageConsumer {
         }
 
         try {
-            log.info("Received file storage request for projectId: {}, filePath: {}", requestEvent.projectId(),
-                    requestEvent.filePath());
-
-            log.info("Saving file for projectId: {}, filePath: {}", requestEvent.projectId(), requestEvent.filePath());
+            log.info("Received file storage request. SagaId: {}, ProjectId: {}, File: {}", 
+                    requestEvent.sagaId(), requestEvent.projectId(), requestEvent.filePath());
 
             projectFileService.saveFile(requestEvent.projectId(), requestEvent.filePath(), requestEvent.fileContent());
 
+            log.info("File saved successfully, recording processed event for SagaId: {}", requestEvent.sagaId());
             processedEventRepository.save(new ProcessedEvent(
                     requestEvent.sagaId(),
                     LocalDateTime.now()));
 
             sendResponse(requestEvent, true, null);
         } catch (Exception e) {
-            log.error("Error processing file storage request for projectId: {}, filePath: {}, error: {}",
-                    requestEvent.projectId(), requestEvent.filePath(), e.getMessage());
+            log.error("CRITICAL: SagaId {} failed during file storage. Error: {}", 
+                    requestEvent.sagaId(), e.getMessage(), e);
             sendResponse(requestEvent, false, e.getMessage());
+            // Re-throw to ensure transaction rollback if necessary, though we sent a manual fail response
+            throw e; 
         }
 
     }

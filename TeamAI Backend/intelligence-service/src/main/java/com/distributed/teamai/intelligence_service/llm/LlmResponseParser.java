@@ -20,17 +20,24 @@ public class LlmResponseParser {
 
 
     private static final java.util.regex.Pattern TAG_SPLIT_PATTERN = java.util.regex.Pattern.compile(
-            "(?=<thought|<tool|<message|<file)",
+            "(?=<thought|<tool|<message|<file|thought>|tool>|message>|file>)",
             java.util.regex.Pattern.CASE_INSENSITIVE
     );
 
     private static final java.util.regex.Pattern TAG_START_PATTERN = java.util.regex.Pattern.compile(
-            "<(thought|tool|message|file)(?:\\s+([^>]*))?>",
+            "<?(thought|tool|message|file)(?:\\s+([^>]*))?>",
             java.util.regex.Pattern.CASE_INSENSITIVE
     );
 
     private static final Pattern ATTRIBUTE_PATTERN = Pattern.compile(
             "(path|args)=\"([^\"]+)\""
+    );
+
+    /**
+     * Regex to catch leaked tag names followed by > that might appear in free-text blocks.
+     */
+    private static final Pattern LEAKED_TAG_CLEANUP = Pattern.compile(
+            "(?i)</?(thought|message|file|tool)>?"
     );
 
     public List<ChatEvent> parserChatEvents(String fullResponse, ChatMessage chatMessage) {
@@ -86,8 +93,9 @@ public class LlmResponseParser {
                 }
                 events.add(builder.build());
             } else {
-                // Untagged free-text block
-                String cleanContent = trimmedPart.replaceAll("(?i)</?(thought|message|file|tool)[^>]*>", "").trim();
+                // Untagged free-text block - aggressively clean leaked markers
+                String cleanContent = LEAKED_TAG_CLEANUP.matcher(trimmedPart).replaceAll("").trim();
+                
                 if (!cleanContent.isEmpty()) {
                     events.add(ChatEvent.builder()
                             .chatType(ChatEventType.MESSAGE)

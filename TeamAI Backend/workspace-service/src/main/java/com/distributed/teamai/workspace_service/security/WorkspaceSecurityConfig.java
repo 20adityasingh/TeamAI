@@ -38,6 +38,7 @@ public class WorkspaceSecurityConfig {
                 .authorizeHttpRequests(
                         auth -> auth
                                 .requestMatchers("/actuator/**").permitAll()
+                                .requestMatchers("/internal/v1/**").permitAll()
                                 .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(exceptionHandlingConfigurer -> exceptionHandlingConfigurer
