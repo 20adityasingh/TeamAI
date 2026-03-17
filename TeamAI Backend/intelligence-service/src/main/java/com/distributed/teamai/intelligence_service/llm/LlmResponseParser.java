@@ -63,9 +63,14 @@ public class LlmResponseParser {
                 case "thought" -> builder.chatType(ChatEventType.THOUGHT);
                 case "message" -> builder.chatType(ChatEventType.MESSAGE);
                 case "file" -> {
+                    String path = mapAttr.get("path");
+                    if (path == null || path.isEmpty()) {
+                        log.warn("Skipping file edit event due to missing path attribute.");
+                        continue; // Skip this fragment if no path provided
+                    }
                     builder.chatType(ChatEventType.FILE_EDIT);
                     builder.status(ChatEventStatus.PENDING);
-                    builder.filePath(mapAttr.get("path"));
+                    builder.filePath(path);
                 }
                 case "tool" -> {
                     builder.chatType(ChatEventType.TOOL_LOG);

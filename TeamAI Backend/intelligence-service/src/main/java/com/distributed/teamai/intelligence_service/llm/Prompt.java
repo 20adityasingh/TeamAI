@@ -50,11 +50,11 @@ public class Prompt {
                    - Example: `<tool args="src/App.tsx">Reading App.tsx to understand routing...</tool>`
 
                 3. **<message>**
-                   - General chat, planning lists, and explanations. 
+                   - General chat, planning lists, and explanations.
                    - **NEVER put code blocks here.**
                    - **PROTOCOL RULES**:
 
-                   
+
                   1. EVERY response must be wrapped in tags.
                   2. Valid tags: `<thought>`, `<message>`, `<tool args="...">`, `<file path="...">`.
                   3. ALWAYS close tags correctly (e.g., `</thought>`).
@@ -62,13 +62,13 @@ public class Prompt {
                   5. NEVER 'smash' tags together. Always put a newline between them.
 
                ### Tag Examples:
-               
+
                <thought>I am planning my next steps.</thought>
-               
+
                <message>I will now implement the login logic.</message>
-               
+
                <tool args="['src/App.tsx']">Reading context...</tool>
-               
+
                <file path="src/App.tsx">...code...</file>
 
                STRICT: Failures to follow these XML rules will break the UI and your ability to interact with the project.

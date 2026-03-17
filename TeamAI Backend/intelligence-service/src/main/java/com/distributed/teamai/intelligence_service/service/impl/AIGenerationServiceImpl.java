@@ -147,8 +147,7 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                             "\n\n⚠️ Sorry, I encountered an error while processing your request. Please try again.");
                 });
 
-        // Prepend a virtual thought tag to trigger real-time UI "Thinking" bar
-        return Flux.concat(Flux.just("<thought>Analyzing request and checking context...</thought>"), aiStream);
+        return aiStream;
     }
 
     private void finalizeChats(Long userId, String userMessage, ChatSession chatSession, String fullResponse,
@@ -199,8 +198,8 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                     String sagaId = UUID.randomUUID().toString();
                     e.setSagaId(sagaId);
                     FileStoreRequestEvent fileStoreRequestEvent = new FileStoreRequestEvent(
-                            projectId,
                             userId,
+                            projectId,
                             sagaId,
                             e.getFilePath(),
                             e.getContent()

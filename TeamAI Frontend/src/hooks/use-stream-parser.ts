@@ -43,6 +43,10 @@ export const useStreamParser = (streamBuffer: string) => {
           rawEvents.push({ type: ChatEventType.TOOL_LOG, content, metadata: mapAttr.args });
           break;
         case "file":
+          if (!mapAttr.path) {
+            console.warn("Skipping file edit event due to missing path attribute.");
+            break;
+          }
           rawEvents.push({ type: ChatEventType.FILE_EDIT, content, filePath: mapAttr.path });
           break;
       }
