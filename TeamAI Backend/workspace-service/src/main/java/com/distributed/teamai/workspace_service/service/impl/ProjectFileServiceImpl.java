@@ -58,6 +58,7 @@ public class ProjectFileServiceImpl implements ProjectFileService {
     public String getFileContent(Long projectId, String path) {
 
         String objectName = projectId + "/" + path;
+        log.info("Attempting to get file content for object: {} in bucket: {}", objectName, BUCKET_NAME);
 
         try{
             InputStream inputStream = minioClient.getObject(
@@ -68,6 +69,7 @@ public class ProjectFileServiceImpl implements ProjectFileService {
             );
             return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (Exception e) {
+            log.error("Failed to read File Content for object {}: {}", objectName, e.getMessage());
             throw new RuntimeException("Failed to read File Content: "+e);
         }
 
