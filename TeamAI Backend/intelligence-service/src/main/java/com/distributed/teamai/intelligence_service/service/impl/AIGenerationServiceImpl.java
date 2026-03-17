@@ -140,7 +140,7 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                             return new RuntimeException("AI tool execution failed after retries. Please try again.");
                         }))
                 .onErrorResume(error -> {
-                    log.error("Streaming failed for Project ID: {}, returning error message", projectId, error);
+                    log.error("Streaming failed for Project ID: {}. Root cause: ", projectId, error);
                     return Flux.just(
                             "\n\n⚠️ Sorry, I encountered an error while processing your request. Please try again.");
                 });
@@ -164,13 +164,13 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                         .content(userMessage)
                         .chatSession(chatSession)
                         .role(MessageRole.USER)
-                        .tokensUsed(usage.getPromptTokens())
+                        .tokensUsed(usage != null ? usage.getPromptTokens() : 0)
                         .build());
 
         ChatMessage assistantChatMessage = ChatMessage.builder()
                 .role(MessageRole.ASSISTANT)
                 .chatSession(chatSession)
-                .tokensUsed(usage.getCompletionTokens())
+                .tokensUsed(usage != null ? usage.getCompletionTokens() : 0)
                 .build();
 
         assistantChatMessage = chatMessageRepository.save(assistantChatMessage);
