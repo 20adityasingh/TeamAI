@@ -17,13 +17,14 @@ public class MinioConfig {
     private String secretKey;
 
     @Bean
-    public MinioClient minioClient(){
+    public MinioClient minioClient() {
+        String effectiveUrl = (url != null && !url.isEmpty()) ? url : "http://minio:9000";
+        String effectiveAccessKey = (accessKey != null && !accessKey.isEmpty()) ? accessKey : System.getenv("MINIO_ROOT_USER");
+        String effectiveSecretKey = (secretKey != null && !secretKey.isEmpty()) ? secretKey : System.getenv("MINIO_ROOT_PASSWORD");
 
         return MinioClient.builder()
-                .endpoint(url)
-                .credentials(accessKey, secretKey)
+                .endpoint(effectiveUrl)
+                .credentials(effectiveAccessKey, effectiveSecretKey)
                 .build();
-
     }
-
 }
