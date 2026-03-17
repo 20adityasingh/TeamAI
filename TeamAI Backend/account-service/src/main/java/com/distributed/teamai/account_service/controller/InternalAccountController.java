@@ -46,7 +46,10 @@ public class InternalAccountController {
     }
 
     @GetMapping("/billing/current-plan")
-    public PlanDto getCurrentSubscriptionPlan() {
+    public PlanDto getCurrentSubscriptionPlan(@RequestParam(required = false) Long userId) {
+        if (userId != null) {
+            return subscriptionService.getCurrentSubscribedPlanByUser(userId);
+        }
         return subscriptionService.getCurrentSubscribedPlanByUser();
     }
 

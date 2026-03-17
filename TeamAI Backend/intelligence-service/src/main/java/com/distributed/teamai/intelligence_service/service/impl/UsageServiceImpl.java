@@ -10,6 +10,7 @@ import com.distributed.teamai.intelligence_service.service.UsageService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -17,6 +18,7 @@ import java.time.LocalDate;
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(makeFinal = true, level = AccessLevel.PRIVATE)
+@Slf4j
 public class UsageServiceImpl implements UsageService {
 
     UsageRepository usageRepository;
@@ -53,10 +55,18 @@ public class UsageServiceImpl implements UsageService {
 
     @Override
     public void checkDailyTokenUsage() {
-
         Long userId = authUtils.getCurrentUserId();
+        checkDailyTokenUsage(userId);
+    }
 
-        PlanDto plan = accountClient.getCurrentSubscriptionPlan();
+    @Override
+    public void checkDailyTokenUsage(Long userId) {
+        if (userId == null) {
+            log.warn("checkDailyTokenUsage called with null userId. Skipping usage check.");
+            return;
+        }
+
+        PlanDto plan = accountClient.getCurrentSubscriptionPlan(userId);
 
         if (plan == null) {
             plan = FREE_PLAN;

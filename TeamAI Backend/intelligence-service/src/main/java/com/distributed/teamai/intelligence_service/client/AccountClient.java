@@ -19,6 +19,6 @@ public interface AccountClient {
     Optional<UserDto> getUserByUsername(@RequestParam("username") String username);
 
     @GetMapping("/internal/v1/billing/current-plan")
-    PlanDto getCurrentSubscriptionPlan();
+    public PlanDto getCurrentSubscriptionPlan(@RequestParam("userId") Long userId);
 
 }

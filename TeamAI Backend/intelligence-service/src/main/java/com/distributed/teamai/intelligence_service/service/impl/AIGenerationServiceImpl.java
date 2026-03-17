@@ -33,8 +33,6 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
-import static org.apache.logging.log4j.ThreadContext.isEmpty;
-
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(makeFinal = true, level = AccessLevel.PRIVATE)
@@ -57,13 +55,12 @@ public class AIGenerationServiceImpl implements AiGenerationService {
     @Override
     public Flux<String> streamResponse(String message, Long projectId) {
 
-        usageService.checkDailyTokenUsage();
+        Long userId = authUtils.getCurrentUserId();
+        usageService.checkDailyTokenUsage(userId);
 
         if (!securityExpression.canEditProject(projectId)) {
             throw new org.springframework.security.access.AccessDeniedException("Access Denied");
         }
-
-        Long userId = authUtils.getCurrentUserId();
 
         ChatSession chatSession = createChatSessionIfNotExist(userId, projectId);
 
@@ -71,14 +68,11 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                 "userId", userId,
                 "projectId", projectId);
 
-        CodeGenerationTool readFiles = new CodeGenerationTool(workspaceClient,projectId);
+        CodeGenerationTool readFiles = new CodeGenerationTool(workspaceClient, projectId);
 
         StringBuilder fullResponseBuffer = new StringBuilder();
-
         AtomicReference<Long> startTime = new AtomicReference<>(System.currentTimeMillis());
-
         AtomicReference<Long> endTime = new AtomicReference<>(0L);
-
         AtomicReference<Usage> usageRef = new AtomicReference<>();
 
         return chatClient.prompt()
@@ -93,9 +87,13 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                 .stream()
                 .chatResponse()
                 .doOnNext(response -> {
+                    if (response.getMetadata() != null && response.getMetadata().getUsage() != null) {
+                        usageRef.set(response.getMetadata().getUsage());
+                    }
 
-                    if(response.getResults() != null && !response.getResults().isEmpty()){
-                        log.info("Received streaming response for Project ID: {}: {}", projectId, response.getResult().getOutput().getText());
+                    if (response.getResults() != null && !response.getResults().isEmpty()) {
+                        log.info("Received streaming response for Project ID: {}: {}", projectId,
+                                response.getResult().getOutput().getText());
                         String content = response.getResult().getOutput().getText();
 
                         if (content != null && !content.isEmpty()) {
@@ -104,32 +102,31 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                             }
                             fullResponseBuffer.append(content);
                         }
-
-                        if (response.getMetadata() != null && response.getMetadata().getUsage() != null) {
-                            usageRef.set(response.getMetadata().getUsage());
-                        }
                     } else {
-                        log.info("Received streaming response for Project ID: {} with empty content", projectId);
+                        log.info("Received streaming response for Project ID: {} without results", projectId);
                     }
-
 
                 })
                 .doOnComplete(() -> {
                     Long duration = (endTime.get() - startTime.get()) / 1000;
                     Schedulers.boundedElastic().schedule(() -> {
-                        finalizeChats(message, chatSession, fullResponseBuffer.toString(), duration, usageRef.get());
+                        try {
+                            finalizeChats(userId, message, chatSession, fullResponseBuffer.toString(), duration,
+                                    usageRef.get());
+                        } catch (Exception e) {
+                            log.error("Failed to finalize chats for project {}: {}", projectId, e.getMessage(), e);
+                        }
                     });
                 })
                 .doOnError(error -> {
                     log.error("Error during streaming for Project ID: {}", projectId, error);
                 })
                 .mapNotNull(response -> {
-                        if(response.getResults() != null && !response.getResults().isEmpty()) {
-                            return response.getResult().getOutput().getText();
-                        }
-                        return "";
-                }
-                )
+                    if (response.getResults() != null && !response.getResults().isEmpty()) {
+                        return response.getResult().getOutput().getText();
+                    }
+                    return "";
+                })
                 .filter(Objects::nonNull)
                 .retryWhen(reactor.util.retry.Retry.backoff(2, java.time.Duration.ofSeconds(1))
                         .filter(throwable -> throwable instanceof org.springframework.ai.tool.execution.ToolExecutionException)
@@ -146,34 +143,37 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                 });
     }
 
-    private void finalizeChats(String userMessage, ChatSession chatSession, String fullResponse,
+    private void finalizeChats(Long userId, String userMessage, ChatSession chatSession, String fullResponse,
             Long duration, Usage usage) {
 
-        Long projectId = chatSession.getId().getProjectId();
-        Long userId = chatSession.getId().getUserId();
+        try {
+            Long projectId = chatSession.getId().getProjectId();
+            log.info("Finalizing chats for project {} and user {}", projectId, userId);
 
-        usageService.checkDailyTokenUsage();    
+            usageService.checkDailyTokenUsage(userId);    
 
-        if (usage != null) {
-            int totalTokens = usage.getCompletionTokens() + usage.getPromptTokens();
-            usageService.recordTokenUsage(userId, totalTokens);
-        }
+            if (usage != null) {
+                int totalTokens = usage.getCompletionTokens() + usage.getPromptTokens();
+                usageService.recordTokenUsage(userId, totalTokens);
+            }
 
-        chatMessageRepository.save(
-                ChatMessage.builder()
-                        .content(userMessage)
-                        .chatSession(chatSession)
-                        .role(MessageRole.USER)
-                        .tokensUsed(usage != null ? usage.getPromptTokens() : 0)
-                        .build());
+            chatMessageRepository.save(
+                    ChatMessage.builder()
+                            .content(userMessage)
+                            .chatSession(chatSession)
+                            .role(MessageRole.USER)
+                            .tokensUsed(usage != null ? usage.getPromptTokens() : 0)
+                            .build());
 
-        ChatMessage assistantChatMessage = ChatMessage.builder()
-                .role(MessageRole.ASSISTANT)
-                .chatSession(chatSession)
-                .tokensUsed(usage != null ? usage.getCompletionTokens() : 0)
-                .build();
+            ChatMessage assistantChatMessage = ChatMessage.builder()
+                    .role(MessageRole.ASSISTANT)
+                    .content(fullResponse)
+                    .chatSession(chatSession)
+                    .tokensUsed(usage != null ? usage.getCompletionTokens() : 0)
+                    .build();
 
-        assistantChatMessage = chatMessageRepository.save(assistantChatMessage);
+            assistantChatMessage = chatMessageRepository.save(assistantChatMessage);
+
 
         List<ChatEvent> events = llmResponseParser.parserChatEvents(fullResponse, assistantChatMessage);
 
@@ -201,9 +201,16 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                     kafkaTemplate.send("file-store-requests-event", "project-"+projectId ,fileStoreRequestEvent);
                 });
 
-        chatEventRepository.saveAll(events);
+            chatEventRepository.saveAll(events);
+            log.info("Successfully saved chat messages and {} events for project {}", events.size(), projectId);
+
+        } catch (Exception e) {
+            log.error("Critical error in finalizeChats: {}", e.getMessage(), e);
+            throw e; 
+        }
 
     }
+
 
     private ChatSession createChatSessionIfNotExist(Long userId, Long projectId) {
 

@@ -8,6 +8,7 @@ import java.time.Instant;
 
 public interface SubscriptionService {
     SubscriptionResponse getCurrentSubscription();
+    SubscriptionResponse getCurrentSubscription(Long userId);
 
     void activateSubscription(Long userId, Long planId, String subscriptionId, String customerId);
 
@@ -21,4 +22,5 @@ public interface SubscriptionService {
     void markSubscriptionPastDue(String subId);
 
     PlanDto getCurrentSubscribedPlanByUser();
+    PlanDto getCurrentSubscribedPlanByUser(Long userId);
 }

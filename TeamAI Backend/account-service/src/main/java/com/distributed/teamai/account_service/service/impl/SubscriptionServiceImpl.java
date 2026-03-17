@@ -42,6 +42,11 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     @Override
     public SubscriptionResponse getCurrentSubscription() {
         Long userId = authUtils.getCurrentUserId();
+        return getCurrentSubscription(userId);
+    }
+
+    @Override
+    public SubscriptionResponse getCurrentSubscription(Long userId) {
 
         var subscriptionOpt = subscriptionRepository.findByUserIdAndStatusIn(userId, Set.of(
                 SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE, SubscriptionStatus.TRAILING
@@ -214,9 +219,13 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     public PlanDto getCurrentSubscribedPlanByUser() {
-
         SubscriptionResponse subscriptionResponse = getCurrentSubscription();
+        return subscriptionResponse.plan();
+    }
 
+    @Override
+    public PlanDto getCurrentSubscribedPlanByUser(Long userId) {
+        SubscriptionResponse subscriptionResponse = getCurrentSubscription(userId);
         return subscriptionResponse.plan();
     }
 
