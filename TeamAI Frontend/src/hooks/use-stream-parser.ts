@@ -15,14 +15,10 @@ const extractAttributes = (attrString: string) => {
 
 export const useStreamParser = (streamBuffer: string) => {
   return useMemo(() => {
-    const events: ChatEvent[] = [];
-    if (!streamBuffer) return events;
+    // Aggressive split: split before <, before /, or before naked tag names if they follow a boundary
+    const parts = streamBuffer.split(/(?=<|(?<=\w)\/|(?<=[>/])(?:thought|message|tool|file))/i);
 
-    // 1. Split by anything that LOOKS like a tag start, including missing brackets
-    // e.g., <thought, <message, <tool, <file, thought>, message>, tool>, file>
-    const parts = streamBuffer.split(/(?=<thought|<message|<tool|<file|thought>|message>|tool>|file>)/i);
-
-    const eventsToReturn: ChatEvent[] = [];
+    const rawEvents: ChatEvent[] = [];
 
     parts.forEach((part) => {
       const trimmedPart = part.trim();
@@ -37,25 +33,24 @@ export const useStreamParser = (streamBuffer: string) => {
 
         let content = trimmedPart.substring(fullOpenTag.length).trim();
 
-        const closingTag = `</${tagName}>`;
-        if (content.toLowerCase().endsWith(closingTag.toLowerCase())) {
-          content = content.substring(0, content.length - closingTag.length).trim();
-        }
+        // Strip closing tag fragments
+        content = content.replace(new RegExp(`</${tagName}>`, "gi"), "").trim();
+        content = content.replace(/<\/?[a-z]*$/i, "").trim();
 
         const mapAttr = extractAttributes(attributes);
 
         switch (tagName) {
           case "thought":
-            eventsToReturn.push({ type: ChatEventType.THOUGHT, content });
+            rawEvents.push({ type: ChatEventType.THOUGHT, content });
             break;
           case "message":
-            eventsToReturn.push({ type: ChatEventType.MESSAGE, content });
+            rawEvents.push({ type: ChatEventType.MESSAGE, content });
             break;
           case "tool":
-            eventsToReturn.push({ type: ChatEventType.TOOL_LOG, content, metadata: mapAttr.args });
+            rawEvents.push({ type: ChatEventType.TOOL_LOG, content, metadata: mapAttr.args });
             break;
           case "file":
-            eventsToReturn.push({ type: ChatEventType.FILE_EDIT, content, filePath: mapAttr.path });
+            rawEvents.push({ type: ChatEventType.FILE_EDIT, content, filePath: mapAttr.path });
             break;
         }
       } else {
@@ -64,11 +59,25 @@ export const useStreamParser = (streamBuffer: string) => {
           .trim();
 
         if (cleanContent) {
-          eventsToReturn.push({ type: ChatEventType.MESSAGE, content: cleanContent });
+          rawEvents.push({ type: ChatEventType.MESSAGE, content: cleanContent });
         }
       }
     });
 
-    return eventsToReturn;
+    // Merge adjacent events of the same type (especially THOUGHT and MESSAGE)
+    const mergedEvents: ChatEvent[] = [];
+    rawEvents.forEach((event) => {
+      if (
+        mergedEvents.length > 0 &&
+        mergedEvents[mergedEvents.length - 1].type === event.type &&
+        (event.type === ChatEventType.THOUGHT || event.type === ChatEventType.MESSAGE)
+      ) {
+        mergedEvents[mergedEvents.length - 1].content += "\n" + event.content;
+      } else {
+        mergedEvents.push(event);
+      }
+    });
+
+    return mergedEvents;
   }, [streamBuffer]);
 };
