@@ -5,6 +5,7 @@ public record PlanDto(
         String name,
         Integer maxProjects,
         Integer maxTokensPerDay,
+        Integer maxPreviews,
         Boolean unlimitedAi,
         String price
 ) {

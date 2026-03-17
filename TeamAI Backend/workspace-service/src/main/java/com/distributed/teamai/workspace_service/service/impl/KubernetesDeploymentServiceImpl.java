@@ -1,6 +1,11 @@
 package com.distributed.teamai.workspace_service.service.impl;
 
+import com.distributed.teamai.common_lib.dto.PlanDto;
+import com.distributed.teamai.common_lib.error.BadRequestException;
+import com.distributed.teamai.common_lib.security.AuthUtils;
+import com.distributed.teamai.workspace_service.client.AccountClient;
 import com.distributed.teamai.workspace_service.dto.deploy.DeployResponse;
+import com.distributed.teamai.workspace_service.repository.ProjectMemberRepository;
 import com.distributed.teamai.workspace_service.service.DeploymentService;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -13,6 +18,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -23,6 +29,9 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
 
     private final KubernetesClient client;
     private final StringRedisTemplate redisTemplate;
+    private final AuthUtils authUtils;
+    private final AccountClient accountClient;
+    private final ProjectMemberRepository projectMemberRepository;
 
     @Value("${app.preview.namespace}")
     private String namespace;
@@ -39,6 +48,10 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
     private static final String BUSY = "busy";
 
     public DeployResponse deploy(Long projectId) {
+        if (!canDeployPreview()) {
+            throw new BadRequestException("Preview limit reached for current PLAN, upgrade your PLAN.");
+        }
+
         // Dynamically build the domain: project-123.app.domain.com
         String domain = "project-" + projectId + "." + baseDomain;
 
@@ -56,6 +69,31 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
         }
 
         return claimAndStartNewPod(projectId, domain, formattedUrl);
+    }
+
+    private boolean canDeployPreview() {
+        Long userId = authUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BadRequestException("User not found.");
+        }
+
+        PlanDto plan = accountClient.getCurrentSubscriptionPlan();
+        int maxPreviews = (plan != null && plan.maxPreviews() != null) ? plan.maxPreviews() : 1;
+        List<Long> ownedProjectIds = projectMemberRepository.findAllOwnedProjectIdsByUser(userId);
+
+        if (ownedProjectIds.isEmpty())
+            return true;
+
+        long activePreviewsCount = client.pods().inNamespace(namespace)
+                .withLabel(POOL_LABEL, BUSY)
+                .list().getItems().stream()
+                .filter(pod -> {
+                    String podProjectId = pod.getMetadata().getLabels().get(PROJECT_LABEL);
+                    return podProjectId != null && ownedProjectIds.contains(Long.parseLong(podProjectId));
+                })
+                .count();
+
+        return activePreviewsCount < maxPreviews;
     }
 
     private Pod findActivePod(Long projectId) {

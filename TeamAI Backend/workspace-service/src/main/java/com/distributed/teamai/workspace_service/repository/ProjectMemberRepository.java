@@ -35,6 +35,12 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Pr
                         """)
         int countProjectOwnedByUser(@Param("userId") Long userId);
 
+        @Query("""
+                        select pm.id.projectId from ProjectMember pm
+                                    where pm.id.userId = :userId and pm.projectRole = 'OWNER'
+                        """)
+        List<Long> findAllOwnedProjectIdsByUser(@Param("userId") Long userId);
+
         // Pending invites - where acceptedAt is null
         @Query("""
                         select pm from ProjectMember pm

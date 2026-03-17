@@ -43,14 +43,24 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     public SubscriptionResponse getCurrentSubscription() {
         Long userId = authUtils.getCurrentUserId();
 
-        var subscription = subscriptionRepository.findByUserIdAndStatusIn(userId, Set.of(
+        var subscriptionOpt = subscriptionRepository.findByUserIdAndStatusIn(userId, Set.of(
                 SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE, SubscriptionStatus.TRAILING
-        )).orElse(
-                new Subscription()
+        ));
+
+        if (subscriptionOpt.isPresent()) {
+            return subscriptionMapper.toSubscriptionResponse(subscriptionOpt.get());
+        }
+
+        // Return Free Plan details as default
+        Plan freePlan = planRepository.findByNameIgnoreCase("FREE PLAN")
+                .orElseThrow(() -> new ResourceNotFoundException("Plan", "FREE PLAN"));
+
+        return new SubscriptionResponse(
+                subscriptionMapper.toPlanResponse(freePlan),
+                SubscriptionStatus.FREE.name(),
+                null,
+                0L
         );
-
-        return subscriptionMapper.toSubscriptionResponse(subscription);
-
     }
 
     @Override

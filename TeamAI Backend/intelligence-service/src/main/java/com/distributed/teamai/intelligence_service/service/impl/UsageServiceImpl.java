@@ -25,11 +25,12 @@ public class UsageServiceImpl implements UsageService {
 
     private static final PlanDto FREE_PLAN = new PlanDto(
             null, // id
-            "Free Tier", // name
+            "FREE PLAN", // name
             1, // maxProjects
-            1000, // maxTokensPerDay
+            10000, // maxTokensPerDay
+            1, // maxPreviews
             false, // unlimitedAi
-            "0" // Price
+            "no" // Price
     );
 
     @Override
