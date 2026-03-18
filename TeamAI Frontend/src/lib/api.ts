@@ -363,8 +363,6 @@ export const api = {
               if (!dataStr) continue;
 
               let content = dataStr;
-
-              // 1. FIX: Safely handle both JSON and raw string formats
               try {
                 const parsed = JSON.parse(dataStr);
                 if (parsed.text !== undefined) {
@@ -372,55 +370,49 @@ export const api = {
                 } else if (typeof parsed === 'string') {
                   content = parsed;
                 }
-              } catch (e) {
-                // If it's not JSON, it's a raw Spring WebFlux string.
-                // We just use dataStr as-is.
+              } catch (_) {
+                // keep raw content
               }
 
               if (!content) continue;
 
-              // Send chunk to Chat UI
               onChunk(content);
-
-              // Add to buffer for file parsing
               fullContentBuffer += content;
 
-              // 2. FIX: Safely extract files without lastIndex tracking bugs
-              // We parse the entire buffer every time to catch completed files
               const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)'|([^\s>]+))\s*>([\s\S]*?)<\/file>/gi;
               let match;
               while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
                 const path = match[1] || match[2] || match[3];
                 let fileContent = match[4].trim();
-
-                // 3. FIX: Strip markdown backticks before sending to PreviewPanel
                 fileContent = fileContent
                     .replace(/^```[a-zA-Z]*\n?/i, '')
                     .replace(/\n?```$/i, '')
                     .trim();
-
-                if (path && fileContent) {
-                  onFile(path, fileContent);
-                }
+                if (path && fileContent) onFile(path, fileContent);
               }
             }
           }
 
-          // Final flush for any remaining data in sseBuffer
           if (sseBuffer.trim().startsWith("data:")) {
-            // Same logic as above for the final piece...
-            let content = sseBuffer.trim().slice(5).trim();
-            try { content = JSON.parse(content).text || content; } catch {}
+            const dataStr = sseBuffer.trim().slice(5).trim();
+            if (dataStr) {
+              let content = dataStr;
+              try {
+                const parsed = JSON.parse(dataStr);
+                if (parsed.text !== undefined) content = parsed.text;
+                else if (typeof parsed === 'string') content = parsed;
+              } catch (_) {}
 
-            if (content) {
-              onChunk(content);
-              fullContentBuffer += content;
-              const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)'|([^\s>]+))\s*>([\s\S]*?)<\/file>/gi;
-              let match;
-              while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
-                const path = match[1] || match[2] || match[3];
-                let fileContent = match[4].trim().replace(/^```[a-zA-Z]*\n?/i, '').replace(/\n?```$/i, '').trim();
-                if (path && fileContent) onFile(path, fileContent);
+              if (content) {
+                onChunk(content);
+                fullContentBuffer += content;
+                const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)'|([^\s>]+))\s*>([\s\S]*?)<\/file>/gi;
+                let match;
+                while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
+                  const path = match[1] || match[2] || match[3];
+                  let fileContent = match[4].trim().replace(/^```[a-zA-Z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+                  if (path && fileContent) onFile(path, fileContent);
+                }
               }
             }
           }
