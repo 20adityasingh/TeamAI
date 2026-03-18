@@ -20,15 +20,21 @@ import java.util.regex.Pattern;
 public class LlmResponseParser {
 
 
-    // A greedy regex that finds tag-like starts and captures everything until the next potential tag start or end of string.
-    // Handles smashed tags (thoughttool), missing brackets (thought>), and unclosed tags.
-    private static final Pattern EVENT_SCANNER = Pattern.compile(
-            "(?i)<?\\/?(thought|message|tool|file)(?:\\s+([^>]*))?>?(.*?)(?=(?:<?\\/?(?:thought|message|tool|file)(?:\\s|\\b|>))|$)",
-            Pattern.DOTALL
+    // Scan only opening tags to avoid mis-classifying closing fragments as new events.
+    private static final Pattern OPENING_TAG_PATTERN = Pattern.compile(
+            "<\\s*(thought|message|tool|file)\\b([^>]*)>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
     );
 
+    private static final Pattern NEXT_OPENING_TAG_PATTERN = Pattern.compile(
+            "<\\s*(thought|message|tool|file)\\b[^>]*>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
+
+    // Supports path="...", path='...', and path=src/index.css style attributes.
     private static final Pattern ATTRIBUTE_PATTERN = Pattern.compile(
-            "(path|args)=\"([^\"]+)\""
+            "(path|args)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))",
+            Pattern.CASE_INSENSITIVE
     );
 
     public List<ChatEvent> parserChatEvents(String fullResponse, ChatMessage chatMessage) {
@@ -36,11 +42,20 @@ public class LlmResponseParser {
         List<ChatEvent> rawEvents = new ArrayList<>();
         if (fullResponse == null || fullResponse.isEmpty()) return rawEvents;
 
-        Matcher matcher = EVENT_SCANNER.matcher(fullResponse);
-        while (matcher.find()) {
+        Matcher matcher = OPENING_TAG_PATTERN.matcher(fullResponse);
+        int cursor = 0;
+
+        while (cursor < fullResponse.length()) {
+            matcher.region(cursor, fullResponse.length());
+            if (!matcher.find()) {
+                break;
+            }
+
             String tagName = matcher.group(1).toLowerCase();
             String attributes = matcher.group(2);
-            String content = matcher.group(3).trim();
+            int contentStart = matcher.end();
+            int contentEnd = findContentEnd(fullResponse, tagName, contentStart);
+            String content = fullResponse.substring(contentStart, contentEnd).trim();
 
             // Ignore empty fragments and noise
             if (content.isEmpty() && !tagName.equals("thought")) {
@@ -48,9 +63,8 @@ public class LlmResponseParser {
                if (!tagName.equals("message") && !tagName.equals("tool") && !tagName.equals("file")) continue;
             }
 
-            // Cleanup any leaked closing tag fragments in the content
-            content = content.replaceAll("(?i)</?" + tagName + ">?", "").trim();
-            content = content.replaceAll("(?i)</?[a-z]+>?$", "").trim(); // Clean trailing noise
+            // Cleanup any leaked trailing tag fragments in the content.
+            content = content.replaceAll("(?i)</?[a-z]+>?$", "").trim();
 
             Map<String, String> mapAttr = extractAttributes(attributes);
 
@@ -78,6 +92,14 @@ public class LlmResponseParser {
                 }
             }
             rawEvents.add(builder.build());
+            int nextCursor = contentEnd;
+            Pattern closingTagPattern = Pattern.compile("</\\s*" + Pattern.quote(tagName) + "\\s*>", Pattern.CASE_INSENSITIVE);
+            Matcher closingMatcher = closingTagPattern.matcher(fullResponse);
+            if (closingMatcher.find(contentStart) && closingMatcher.start() == contentEnd) {
+                nextCursor = closingMatcher.end();
+            }
+
+            cursor = Math.max(nextCursor, matcher.end());
         }
 
         // Fallback: If no tags were found at all, treat the whole thing as one message
@@ -94,7 +116,7 @@ public class LlmResponseParser {
         List<ChatEvent> mergedEvents = new ArrayList<>();
         for (ChatEvent event : rawEvents) {
             if (!mergedEvents.isEmpty()) {
-                ChatEvent last = mergedEvents.get(mergedEvents.size() - 1);
+                ChatEvent last = mergedEvents.getLast();
                 boolean sameType = last.getChatType() == event.getChatType();
                 boolean mergeable = sameType && (event.getChatType() == ChatEventType.THOUGHT || event.getChatType() == ChatEventType.MESSAGE);
                 boolean sameTarget = Objects.equals(last.getFilePath(), event.getFilePath()) && Objects.equals(last.getMetadata(), event.getMetadata());
@@ -125,9 +147,37 @@ public class LlmResponseParser {
 
         Matcher matcher = ATTRIBUTE_PATTERN.matcher(attributeString);
         while (matcher.find()) {
-            attributes.put(matcher.group(1), matcher.group(2));
+            String key = matcher.group(1).toLowerCase();
+            String value = firstNonNull(matcher.group(2), matcher.group(3), matcher.group(4));
+            if (value != null) {
+                attributes.put(key, value);
+            }
         }
         return attributes;
+    }
+
+    private int findContentEnd(String fullResponse, String tagName, int contentStart) {
+        Pattern closingTagPattern = Pattern.compile("</\\s*" + Pattern.quote(tagName) + "\\s*>", Pattern.CASE_INSENSITIVE);
+        Matcher closingMatcher = closingTagPattern.matcher(fullResponse);
+        if (closingMatcher.find(contentStart)) {
+            return closingMatcher.start();
+        }
+
+        Matcher nextOpeningMatcher = NEXT_OPENING_TAG_PATTERN.matcher(fullResponse);
+        if (nextOpeningMatcher.find(contentStart)) {
+            return nextOpeningMatcher.start();
+        }
+
+        return fullResponse.length();
+    }
+
+    private String firstNonNull(String... values) {
+        for (String value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 
 }

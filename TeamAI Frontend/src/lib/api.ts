@@ -380,12 +380,13 @@ export const api = {
               // 2. Accumulate for file parsing
               fullContentBuffer += content;
               
-              const fileRegex = /<file path="([^"]+)">([\s\S]*?)<\/file>/g;
+              const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)')\s*>([\s\S]*?)<\/file>/gi;
               fileRegex.lastIndex = lastProcessedIndex;
               
               let match;
               while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
-                const [_, path, fileContent] = match;
+                const path = match[1] || match[2];
+                const fileContent = match[3];
                 onFile(path, fileContent.trim());
                 lastProcessedIndex = fileRegex.lastIndex;
               }
@@ -409,11 +410,12 @@ export const api = {
                 fullContentBuffer += content;
                 
                 // Final regex check
-                const fileRegex = /<file path="([^"]+)">([\s\S]*?)<\/file>/g;
+                const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)')\s*>([\s\S]*?)<\/file>/gi;
                 fileRegex.lastIndex = lastProcessedIndex;
                 let match;
                 while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
-                    const [_, path, fileContent] = match;
+                    const path = match[1] || match[2];
+                    const fileContent = match[3];
                     onFile(path, fileContent.trim());
                 }
                 } catch (e) {

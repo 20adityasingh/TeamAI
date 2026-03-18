@@ -26,13 +26,13 @@ public class UsageServiceImpl implements UsageService {
     AccountClient accountClient;
 
     private static final PlanDto FREE_PLAN = new PlanDto(
-            null, // id
-            "FREE PLAN", // name
-            1, // maxProjects
-            10000, // maxTokensPerDay
-            1, // maxPreviews
-            false, // unlimitedAi
-            "no" // Price
+            null,
+            "FREE PLAN",
+            1,
+            10000,
+            1,
+            false,
+            "no"
     );
 
     @Override

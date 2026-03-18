@@ -1,34 +1,53 @@
 import { useMemo } from 'react';
 import { ChatEvent, ChatEventType } from '@/lib/types';
 
-const TAG_START_REGEX = /<(thought|tool|message|file)(?:\s+[^>]*)?>/gi;
-const ATTR_REGEX = /(?:path|args)="([^"]+)"/i;
 const extractAttributes = (attrString: string) => {
   const attrs: { [key: string]: string } = {};
-  const regex = /(\w+)="([^"]*)"/g;
+  const regex = /(path|args)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
   let match;
   while ((match = regex.exec(attrString)) !== null) {
-    attrs[match[1]] = match[2];
+    const key = match[1].toLowerCase();
+    attrs[key] = match[2] ?? match[3] ?? match[4] ?? '';
   }
   return attrs;
 };
 
 export const useStreamParser = (streamBuffer: string) => {
   return useMemo(() => {
-    // Greedy regex scanner for the frontend
-    const EVENT_SCANNER = /<?\/?(thought|message|tool|file)(?:\s+([^>]*))?>?(.*?)(?=(?:<?\/?(?:thought|message|tool|file)(?:\s|\b|>))|$)/gsi;
+    const OPEN_TAG_REGEX = /<\s*(thought|message|tool|file)\b([^>]*)>/gi;
 
     const rawEvents: ChatEvent[] = [];
-    let match;
+    let cursor = 0;
 
-    while ((match = EVENT_SCANNER.exec(streamBuffer)) !== null) {
-      const tagName = match[1].toLowerCase();
-      const attributes = match[2] || "";
-      let content = match[3].trim();
+    while (cursor < streamBuffer.length) {
+      OPEN_TAG_REGEX.lastIndex = cursor;
+      const openMatch = OPEN_TAG_REGEX.exec(streamBuffer);
+      if (!openMatch) break;
 
-      // Cleanup fragments
-      content = content.replace(new RegExp(`</?${tagName}>?`, "gi"), "").trim();
-      content = content.replace(/<\/?[a-z]+>?$/i, "").trim();
+      const tagName = openMatch[1].toLowerCase();
+      const attributes = openMatch[2] || '';
+      const contentStart = OPEN_TAG_REGEX.lastIndex;
+      const closeTagRegex = new RegExp(`</\\s*${tagName}\\s*>`, 'i');
+      const remaining = streamBuffer.slice(contentStart);
+      const closeMatch = remaining.match(closeTagRegex);
+
+      let contentEnd = streamBuffer.length;
+      let nextCursor = streamBuffer.length;
+      if (closeMatch && closeMatch.index !== undefined) {
+        contentEnd = contentStart + closeMatch.index;
+        nextCursor = contentEnd + closeMatch[0].length;
+      } else {
+        const nextOpenOffset = remaining.search(/<\s*(thought|message|tool|file)\b[^>]*>/i);
+        if (nextOpenOffset !== -1) {
+          contentEnd = contentStart + nextOpenOffset;
+          nextCursor = contentEnd;
+        }
+      }
+
+      let content = streamBuffer.slice(contentStart, contentEnd).trim();
+
+      // Cleanup trailing tag fragments from partially generated output.
+      content = content.replace(/<\/?[a-z]+>?$/i, '').trim();
 
       const mapAttr = extractAttributes(attributes);
 
@@ -50,6 +69,8 @@ export const useStreamParser = (streamBuffer: string) => {
           rawEvents.push({ type: ChatEventType.FILE_EDIT, content, filePath: mapAttr.path });
           break;
       }
+
+      cursor = Math.max(nextCursor, openMatch.index + 1);
     }
 
     // Fallback: If no tags matched yet there is content
