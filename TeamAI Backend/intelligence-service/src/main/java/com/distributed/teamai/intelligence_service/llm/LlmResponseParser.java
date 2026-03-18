@@ -180,18 +180,15 @@ public class LlmResponseParser {
     }
 
     private int findContentEnd(String fullResponse, String tagName, int contentStart) {
-        Pattern closingTagPattern = Pattern.compile("</\\s*" + Pattern.quote(tagName) + "\\s*>", Pattern.CASE_INSENSITIVE);
-        Matcher closingMatcher = closingTagPattern.matcher(fullResponse);
-        if (closingMatcher.find(contentStart)) {
-            return closingMatcher.start();
-        }
-
+        Matcher closingMatcher = Pattern.compile("</\\s*" + Pattern.quote(tagName) + "\\s*>", Pattern.CASE_INSENSITIVE)
+                .matcher(fullResponse);
         Matcher nextOpeningMatcher = NEXT_OPENING_TAG_PATTERN.matcher(fullResponse);
-        if (nextOpeningMatcher.find(contentStart)) {
-            return nextOpeningMatcher.start();
-        }
 
-        return fullResponse.length();
+        int closeIndex = closingMatcher.find(contentStart) ? closingMatcher.start() : Integer.MAX_VALUE;
+        int nextOpenIndex = nextOpeningMatcher.find(contentStart) ? nextOpeningMatcher.start() : Integer.MAX_VALUE;
+
+        int minIndex = Math.min(closeIndex, nextOpenIndex);
+        return minIndex == Integer.MAX_VALUE ? fullResponse.length() : minIndex;
     }
 
     private String firstNonNull(String... values) {

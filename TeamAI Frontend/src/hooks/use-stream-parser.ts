@@ -34,15 +34,17 @@ export const useStreamParser = (streamBuffer: string) => {
 
       let contentEnd = normalizedBuffer.length;
       let nextCursor = normalizedBuffer.length;
-      if (closeMatch && closeMatch.index !== undefined) {
-        contentEnd = contentStart + closeMatch.index;
-        nextCursor = contentEnd + closeMatch[0].length;
-      } else {
-        const nextOpenOffset = remaining.search(/<\s*(thought|message|tool|file)\b[^>]*>/i);
-        if (nextOpenOffset !== -1) {
-          contentEnd = contentStart + nextOpenOffset;
-          nextCursor = contentEnd;
-        }
+
+      const nextOpenOffset = remaining.search(/<\s*(thought|message|tool|file)\b[^>]*>/i);
+      const closeIndex = closeMatch && closeMatch.index !== undefined ? closeMatch.index : -1;
+
+      const boundaries = [closeIndex, nextOpenOffset].filter(idx => idx !== -1);
+      if (boundaries.length > 0) {
+        const earliestBoundary = Math.min(...boundaries);
+        contentEnd = contentStart + earliestBoundary;
+        nextCursor = earliestBoundary === closeIndex 
+          ? contentEnd + closeMatch![0].length 
+          : contentEnd;
       }
 
       let content = normalizedBuffer.slice(contentStart, contentEnd).trim();

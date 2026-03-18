@@ -25,6 +25,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,7 @@ public class AIGenerationServiceImpl implements AiGenerationService {
     UsageService usageService;
     WorkspaceClient workspaceClient;
     KafkaTemplate<String, Object> kafkaTemplate;
+    TransactionTemplate transactionTemplate;
 
     @Override
     public Flux<String> streamResponse(String message, Long projectId) {
@@ -106,38 +108,22 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                     }
 
                 })
-                .doOnComplete(() -> {
+                .doOnError(error -> {
+                    log.error("Streaming error for Project ID: {}. Error: ", projectId, error);
+                })
+                .doFinally(signal -> {
+                    log.info("Stream finalized for Project ID: {} with signal: {}", projectId, signal);
                     if (fullResponseBuffer.length() > 0 && endTime.get() > 0) {
                         Long duration = (endTime.get() - startTime.get()) / 1000;
-                        log.info("Finalizing stream onComplete. Duration: {}s", duration);
                         String fullResponse = fullResponseBuffer.toString();
                         Schedulers.boundedElastic().schedule(() -> {
                             try {
-                                finalizeChats(userId, message, chatSession, fullResponse, duration,
-                                        usageRef.get());
+                                finalizeChats(userId, message, chatSession, fullResponse, duration, usageRef.get());
                             } catch (Exception e) {
                                 log.error("Failed to finalize chats for project {}: {}", projectId, e.getMessage(), e);
                             }
                         });
                     }
-                })
-                .doOnError(error -> {
-                    log.error("Streaming error for Project ID: {}. Error: ", projectId, error);
-                    if (fullResponseBuffer.length() > 0 && endTime.get() > 0) {
-                        Long duration = (endTime.get() - startTime.get()) / 1000;
-                        String fullResponse = fullResponseBuffer.toString();
-                        Schedulers.boundedElastic().schedule(() -> {
-                            try {
-                                finalizeChats(userId, message, chatSession, fullResponse, duration,
-                                        usageRef.get());
-                            } catch (Exception e) {
-                                log.error("Failed to finalize chats (on error) for project {}: {}", projectId, e.getMessage(), e);
-                            }
-                        });
-                    }
-                })
-                .doFinally(signal -> {
-                    log.info("Stream finalized for Project ID: {} with signal: {}", projectId, signal);
                     fullResponseBuffer.setLength(0);
                 })
                 .mapNotNull(response -> {
@@ -173,60 +159,62 @@ public class AIGenerationServiceImpl implements AiGenerationService {
             Long projectId = chatSession.getId().getProjectId();
             log.info("Finalizing chats for project {} and user {}", projectId, userId);
 
-            usageService.checkDailyTokenUsage(userId);    
+            transactionTemplate.executeWithoutResult(status -> {
+                ChatSession fetchedSession = chatSessionRepository.findById(chatSession.getId()).orElse(chatSession);
 
-            if (usage != null) {
-                int totalTokens = usage.getCompletionTokens() + usage.getPromptTokens();
-                usageService.recordTokenUsage(userId, totalTokens);
-            }
+                usageService.checkDailyTokenUsage(userId);    
 
-            chatMessageRepository.save(
-                    ChatMessage.builder()
-                            .content(userMessage)
-                            .chatSession(chatSession)
-                            .role(MessageRole.USER)
-                            .tokensUsed(usage != null ? usage.getPromptTokens() : 0)
-                            .build());
+                if (usage != null) {
+                    int totalTokens = usage.getCompletionTokens() + usage.getPromptTokens();
+                    usageService.recordTokenUsage(userId, totalTokens);
+                }
 
-            ChatMessage assistantChatMessage = ChatMessage.builder()
-                    .role(MessageRole.ASSISTANT)
-                    .content(fullResponse)
-                    .chatSession(chatSession)
-                    .tokensUsed(usage != null ? usage.getCompletionTokens() : 0)
-                    .build();
+                chatMessageRepository.save(
+                        ChatMessage.builder()
+                                .content(userMessage)
+                                .chatSession(fetchedSession)
+                                .role(MessageRole.USER)
+                                .tokensUsed(usage != null ? usage.getPromptTokens() : 0)
+                                .build());
 
-            assistantChatMessage = chatMessageRepository.save(assistantChatMessage);
+                ChatMessage assistantChatMessage = ChatMessage.builder()
+                        .role(MessageRole.ASSISTANT)
+                        .content(fullResponse)
+                        .chatSession(fetchedSession)
+                        .tokensUsed(usage != null ? usage.getCompletionTokens() : 0)
+                        .build();
+
+                assistantChatMessage = chatMessageRepository.save(assistantChatMessage);
 
 
-            List<ChatEvent> events = llmResponseParser.parserChatEvents(fullResponse, assistantChatMessage);
+                List<ChatEvent> events = llmResponseParser.parserChatEvents(fullResponse, assistantChatMessage);
 
-            // 1. Generate Saga IDs for file edits BEFORE saving
-            events.stream()
-                    .filter(e -> e.getChatType() == ChatEventType.FILE_EDIT)
-                    .forEach(e -> e.setSagaId(UUID.randomUUID().toString()));
+                // 1. Generate Saga IDs for file edits BEFORE saving
+                events.stream()
+                        .filter(e -> e.getChatType() == ChatEventType.FILE_EDIT)
+                        .forEach(e -> e.setSagaId(UUID.randomUUID().toString()));
 
-            // 2. SAVE TO DATABASE FIRST
-            log.info("Saving {} chat events to database for project {}", events.size(), projectId);
-            List<ChatEvent> savedEvents = chatEventRepository.saveAll(events);
+                // 2. SAVE TO DATABASE FIRST
+                log.info("Saving {} chat events to database for project {}", events.size(), projectId);
+                List<ChatEvent> savedEvents = chatEventRepository.saveAll(events);
 
-            // 3. NOW PUBLISH TO KAFKA
-            savedEvents.stream()
-                    .filter(e -> e.getChatType() == ChatEventType.FILE_EDIT)
-                    .forEach(e -> {
-                        FileStoreRequestEvent fileStoreRequestEvent = new FileStoreRequestEvent(
-                                userId,
-                                projectId,
-                                e.getSagaId(),
-                                e.getFilePath(),
-                                e.getContent()
-                        );
-                        log.info("Emitting FileStoreRequestEvent for file: {} with saga: {}", e.getFilePath(), e.getSagaId());
-                        kafkaTemplate.send("file-store-requests-event", "project-" + projectId, fileStoreRequestEvent);
-                    });
+                // 3. NOW PUBLISH TO KAFKA
+                savedEvents.stream()
+                        .filter(e -> e.getChatType() == ChatEventType.FILE_EDIT)
+                        .forEach(e -> {
+                            FileStoreRequestEvent fileStoreRequestEvent = new FileStoreRequestEvent(
+                                    userId,
+                                    projectId,
+                                    e.getSagaId(),
+                                    e.getFilePath(),
+                                    e.getContent()
+                            );
+                            log.info("Emitting FileStoreRequestEvent for file: {} with saga: {}", e.getFilePath(), e.getSagaId());
+                            kafkaTemplate.send("file-store-requests-event", "project-" + projectId, fileStoreRequestEvent);
+                        });
 
-        log.info("Saving {} chat events to database for project {}", events.size(), projectId);
-        chatEventRepository.saveAll(events);
-        log.info("Successfully saved chat messages and events for project {}", projectId);
+                log.info("Successfully saved chat messages and events for project {}", projectId);
+            });
 
         } catch (Exception e) {
             log.error("Critical error in finalizeChats: {}", e.getMessage(), e);
