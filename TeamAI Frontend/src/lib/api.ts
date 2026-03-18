@@ -345,6 +345,13 @@ export const api = {
           let sseBuffer = "";
           let fullContentBuffer = "";
 
+          const normalizeMalformedTags = (input: string): string => {
+            let normalized = input;
+            normalized = normalized.replace(/(^|\s)(thought|message|tool|file)>/gi, '$1<$2>');
+            normalized = normalized.replace(/<\/(thought|message|tool|file)(?=(thought|message|tool|file)\b)/gi, '</$1><$2');
+            return normalized;
+          };
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -374,6 +381,7 @@ export const api = {
                 // keep raw content
               }
 
+              content = normalizeMalformedTags(content);
               if (!content) continue;
 
               onChunk(content);
@@ -403,6 +411,7 @@ export const api = {
                 else if (typeof parsed === 'string') content = parsed;
               } catch (_) {}
 
+              content = normalizeMalformedTags(content);
               if (content) {
                 onChunk(content);
                 fullContentBuffer += content;
