@@ -26,7 +26,6 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,9 +51,6 @@ public class AIGenerationServiceImpl implements AiGenerationService {
     UsageService usageService;
     WorkspaceClient workspaceClient;
     KafkaTemplate<String, Object> kafkaTemplate;
-    static Pattern FILE_FIX_INTENT_PATTERN = Pattern.compile(
-            "(?is)(?:\\b(?:fix|edit|update|create|modify|change|rewrite|refactor|remove|add)\\b.*\\b(?:file|css|tsx|ts|js|json|html)\\b)|(?:\\bsrc/[^\\s]+)|(?:\\bindex\\.css\\b)"
-    );
 
     @Override
     public Flux<String> streamResponse(String message, Long projectId) {
@@ -205,28 +201,6 @@ public class AIGenerationServiceImpl implements AiGenerationService {
 
         List<ChatEvent> events = llmResponseParser.parserChatEvents(fullResponse, assistantChatMessage);
 
-        if (shouldRetryForMissingFileEdit(userMessage, events)) {
-            String retryResponse = generateFileEditRecoveryResponse(userMessage, projectId);
-            if (retryResponse != null && !retryResponse.isBlank()) {
-                List<ChatEvent> retryEvents = llmResponseParser.parserChatEvents(retryResponse, assistantChatMessage);
-                boolean retryProducedFileEdit = retryEvents.stream()
-                        .anyMatch(event -> event.getChatType() == ChatEventType.FILE_EDIT);
-
-                if (retryProducedFileEdit) {
-                    log.info("Recovery retry produced FILE_EDIT events for project {}", projectId);
-                    events.addAll(retryEvents);
-                    assistantChatMessage.setContent(fullResponse + "\n" + retryResponse);
-                    assistantChatMessage.setTokensUsed(assistantChatMessage.getTokensUsed());
-                    chatMessageRepository.save(assistantChatMessage);
-                } else {
-                    log.warn("Recovery retry did not produce FILE_EDIT events for project {}", projectId);
-                }
-            }
-        }
-
-        ensureTerminalMessageEvent(events, assistantChatMessage);
-        resetSequenceOrders(events);
-
         events.stream()
                 .filter(e -> e.getChatType() == ChatEventType.FILE_EDIT)
                 .forEach(e -> {
@@ -259,79 +233,6 @@ public class AIGenerationServiceImpl implements AiGenerationService {
             throw e; 
         }
 
-    }
-
-    private boolean shouldRetryForMissingFileEdit(String userMessage, List<ChatEvent> events) {
-        if (userMessage == null || userMessage.isBlank()) {
-            return false;
-        }
-
-        boolean fileFixIntent = FILE_FIX_INTENT_PATTERN.matcher(userMessage).find();
-        boolean hasFileEdit = events.stream().anyMatch(event -> event.getChatType() == ChatEventType.FILE_EDIT);
-        return fileFixIntent && !hasFileEdit;
-    }
-
-    private String generateFileEditRecoveryResponse(String userMessage, Long projectId) {
-        try {
-            Long userId = authUtils.getCurrentUserId();
-            Map<String, Object> advisorParams = Map.of(
-                    "userId", userId,
-                    "projectId", projectId
-            );
-            CodeGenerationTool readFiles = new CodeGenerationTool(workspaceClient, projectId);
-            String retryPrompt = userMessage + "\n\n" +
-                    "Your previous response was malformed. Return valid tags only. " +
-                    "If code changes are requested, include at least one <file path=\"...\"> block.";
-
-            StringBuilder retryBuffer = new StringBuilder();
-
-            chatClient.prompt()
-                    .system(Prompt.CODE_GENERATION_SYSTEM_PROMPT)
-                    .user(retryPrompt)
-                    .tools(readFiles)
-                    .advisors(advisorSpec -> {
-                        advisorSpec.params(advisorParams);
-                        advisorSpec.advisors(fileTreeContextAdvisor);
-                    })
-                    .stream()
-                    .chatResponse()
-                    .map(response -> {
-                        if (response.getResults() != null && !response.getResults().isEmpty()) {
-                            String text = response.getResult().getOutput().getText();
-                            return text != null ? text : "";
-                        }
-                        return "";
-                    })
-                    .filter(text -> text != null && !text.isEmpty())
-                    .doOnNext(retryBuffer::append)
-                    .blockLast(Duration.ofSeconds(45));
-
-            return retryBuffer.toString();
-        } catch (Exception ex) {
-            log.warn("Failed to generate recovery response for project {}: {}", projectId, ex.getMessage());
-            return null;
-        }
-    }
-
-    private void ensureTerminalMessageEvent(List<ChatEvent> events, ChatMessage assistantChatMessage) {
-        boolean hasMessageOrFile = events.stream().anyMatch(event ->
-                event.getChatType() == ChatEventType.MESSAGE || event.getChatType() == ChatEventType.FILE_EDIT
-        );
-
-        if (!hasMessageOrFile) {
-            events.add(ChatEvent.builder()
-                    .chatType(ChatEventType.MESSAGE)
-                    .status(ChatEventStatus.COMPLETED)
-                    .chatMessage(assistantChatMessage)
-                    .content("I hit malformed output while preparing the final response. Please retry once.")
-                    .build());
-        }
-    }
-
-    private void resetSequenceOrders(List<ChatEvent> events) {
-        for (int i = 0; i < events.size(); i++) {
-            events.get(i).setSequenceOrder(i + 1);
-        }
     }
 
 

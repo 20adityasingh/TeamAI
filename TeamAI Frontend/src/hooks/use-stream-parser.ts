@@ -14,25 +14,26 @@ const extractAttributes = (attrString: string) => {
 
 export const useStreamParser = (streamBuffer: string) => {
   return useMemo(() => {
+    const normalizedBuffer = normalizeMalformedTags(streamBuffer);
     const OPEN_TAG_REGEX = /<\s*(thought|message|tool|file)\b([^>]*)>/gi;
 
     const rawEvents: ChatEvent[] = [];
     let cursor = 0;
 
-    while (cursor < streamBuffer.length) {
+    while (cursor < normalizedBuffer.length) {
       OPEN_TAG_REGEX.lastIndex = cursor;
-      const openMatch = OPEN_TAG_REGEX.exec(streamBuffer);
+      const openMatch = OPEN_TAG_REGEX.exec(normalizedBuffer);
       if (!openMatch) break;
 
       const tagName = openMatch[1].toLowerCase();
       const attributes = openMatch[2] || '';
       const contentStart = OPEN_TAG_REGEX.lastIndex;
       const closeTagRegex = new RegExp(`</\\s*${tagName}\\s*>`, 'i');
-      const remaining = streamBuffer.slice(contentStart);
+      const remaining = normalizedBuffer.slice(contentStart);
       const closeMatch = remaining.match(closeTagRegex);
 
-      let contentEnd = streamBuffer.length;
-      let nextCursor = streamBuffer.length;
+      let contentEnd = normalizedBuffer.length;
+      let nextCursor = normalizedBuffer.length;
       if (closeMatch && closeMatch.index !== undefined) {
         contentEnd = contentStart + closeMatch.index;
         nextCursor = contentEnd + closeMatch[0].length;
@@ -44,7 +45,7 @@ export const useStreamParser = (streamBuffer: string) => {
         }
       }
 
-      let content = streamBuffer.slice(contentStart, contentEnd).trim();
+      let content = normalizedBuffer.slice(contentStart, contentEnd).trim();
 
       // Cleanup trailing tag fragments from partially generated output.
       content = content.replace(/<\/?[a-z]+>?$/i, '').trim();
@@ -74,8 +75,8 @@ export const useStreamParser = (streamBuffer: string) => {
     }
 
     // Fallback: If no tags matched yet there is content
-    if (rawEvents.length === 0 && streamBuffer.trim().length > 0) {
-      rawEvents.push({ type: ChatEventType.MESSAGE, content: streamBuffer.trim() });
+    if (rawEvents.length === 0 && normalizedBuffer.trim().length > 0) {
+      rawEvents.push({ type: ChatEventType.MESSAGE, content: normalizedBuffer.trim() });
     }
 
     // Merge adjacent events of the same type (collapses Thinking bars)
@@ -95,4 +96,19 @@ export const useStreamParser = (streamBuffer: string) => {
 
     return mergedEvents;
   }, [streamBuffer]);
+};
+
+const normalizeMalformedTags = (input: string): string => {
+  let normalized = input;
+
+  // Recover missing opening bracket patterns like "thought>" -> "<thought>".
+  normalized = normalized.replace(/(^|\s)(thought|message|tool|file)>/gi, '$1<$2>');
+
+  // Recover smashed boundary patterns like "</thoughttool ...>" -> "</thought><tool ...>".
+  normalized = normalized.replace(
+    /<\/(thought|message|tool|file)(?=(thought|message|tool|file)\b)/gi,
+    '</$1><$2',
+  );
+
+  return normalized;
 };

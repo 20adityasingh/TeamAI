@@ -42,6 +42,8 @@ public class LlmResponseParser {
         List<ChatEvent> rawEvents = new ArrayList<>();
         if (fullResponse == null || fullResponse.isEmpty()) return rawEvents;
 
+        fullResponse = normalizeMalformedTags(fullResponse);
+
         Matcher matcher = OPENING_TAG_PATTERN.matcher(fullResponse);
         int cursor = 0;
 
@@ -178,6 +180,24 @@ public class LlmResponseParser {
             }
         }
         return null;
+    }
+
+    private String normalizeMalformedTags(String input) {
+        String normalized = input;
+
+        // Recover missing opening bracket patterns like "thought>" -> "<thought>".
+        normalized = normalized.replaceAll(
+                "(?i)(^|\\s)(thought|message|tool|file)>",
+                "$1<$2>"
+        );
+
+        // Recover smashed boundary patterns like "</thoughttool ...>" -> "</thought><tool ...>".
+        normalized = normalized.replaceAll(
+                "(?i)</(thought|message|tool|file)(?=(thought|message|tool|file)\\b)",
+                "</$1><$2"
+        );
+
+        return normalized;
     }
 
 }
