@@ -25,15 +25,7 @@ public class UsageServiceImpl implements UsageService {
     AuthUtils authUtils;
     AccountClient accountClient;
 
-    private static final PlanDto FREE_PLAN = new PlanDto(
-            null,
-            "FREE PLAN",
-            1,
-            10000,
-            1,
-            false,
-            "no"
-    );
+    private static final int FREE_PLAN_DAILY_TOKEN_LIMIT = 10_000;
 
     @Override
     public void recordTokenUsage(Long userId, int actualToken) {
@@ -68,9 +60,9 @@ public class UsageServiceImpl implements UsageService {
 
         PlanDto plan = accountClient.getCurrentSubscriptionPlan(userId);
 
-        if (plan == null) {
-            plan = FREE_PLAN;
-        }
+        int maxTokensPerDay = plan != null && plan.maxTokensPerDay() != null
+                ? plan.maxTokensPerDay()
+                : FREE_PLAN_DAILY_TOKEN_LIMIT;
 
         LocalDate today = LocalDate.now();
 
@@ -81,7 +73,7 @@ public class UsageServiceImpl implements UsageService {
                         .tokensUsed(0)
                         .build());
 
-        if (todayLog.getTokensUsed() >= plan.maxTokensPerDay()) {
+        if (todayLog.getTokensUsed() >= maxTokensPerDay) {
             throw new TokenLimitExceededException(
                     "Daily token limit reached. Please upgrade your plan or wait until tomorrow.");
         }
