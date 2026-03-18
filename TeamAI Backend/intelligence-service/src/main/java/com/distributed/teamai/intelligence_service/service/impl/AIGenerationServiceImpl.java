@@ -107,11 +107,10 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                     }
 
                 })
-                .doFinally(signal -> {
-                    // Finalize even if cancelled or error, as long as we have content
+                .doOnComplete(() -> {
                     if (fullResponseBuffer.length() > 0 && endTime.get() > 0) {
                         Long duration = (endTime.get() - startTime.get()) / 1000;
-                        log.info("Finalizing stream with signal: {}. Duration: {}s", signal, duration);
+                        log.info("Finalizing stream onComplete. Duration: {}s", duration);
                         String fullResponse = fullResponseBuffer.toString();
                         Schedulers.boundedElastic().schedule(() -> {
                             try {
@@ -121,9 +120,26 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                                 log.error("Failed to finalize chats for project {}: {}", projectId, e.getMessage(), e);
                             }
                         });
-                        // Clear buffer so we don't finalize twice if complete + finally trigger (unlikely in this setup)
-                        fullResponseBuffer.setLength(0);
                     }
+                })
+                .doOnError(error -> {
+                    log.error("Streaming error for Project ID: {}. Error: ", projectId, error);
+                    if (fullResponseBuffer.length() > 0 && endTime.get() > 0) {
+                        Long duration = (endTime.get() - startTime.get()) / 1000;
+                        String fullResponse = fullResponseBuffer.toString();
+                        Schedulers.boundedElastic().schedule(() -> {
+                            try {
+                                finalizeChats(userId, message, chatSession, fullResponse, duration,
+                                        usageRef.get());
+                            } catch (Exception e) {
+                                log.error("Failed to finalize chats (on error) for project {}: {}", projectId, e.getMessage(), e);
+                            }
+                        });
+                    }
+                })
+                .doFinally(signal -> {
+                    log.info("Stream finalized for Project ID: {} with signal: {}", projectId, signal);
+                    fullResponseBuffer.setLength(0);
                 })
                 .mapNotNull(response -> {
                     if (response.getResults() != null && !response.getResults().isEmpty()) {

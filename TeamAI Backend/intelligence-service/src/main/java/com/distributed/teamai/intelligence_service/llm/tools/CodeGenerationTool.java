@@ -2,6 +2,7 @@ package com.distributed.teamai.intelligence_service.llm.tools;
 
 import com.distributed.teamai.intelligence_service.client.WorkspaceClient;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -9,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @RequiredArgsConstructor
+@Slf4j
 public class CodeGenerationTool {
 
     private final WorkspaceClient workspaceClient;
@@ -22,7 +24,7 @@ public class CodeGenerationTool {
             @ToolParam(description = "List of relative paths (e.g., ['src/App.tsx'])")
             List<String> paths
     ){
-
+        log.info("Executing readFiles tool for Project ID: {} with paths: {}", projectId, paths);
         List<String> result = new ArrayList<>();
 
         for(String path: paths){
