@@ -42,6 +42,9 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
     @Value("${app.preview.proxy-port}")
     private String proxyPort;
 
+    @Value("${minio.bucket-name}")
+    private String bucketName;
+
     private static final String POOL_LABEL = "status";
     private static final String PROJECT_LABEL = "project-id";
     private static final String IDLE = "idle";
@@ -123,10 +126,10 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
         });
 
         try {
-            String initialSyncCmd = String.format("rm -rf /app/* && mc mirror --overwrite myminio/projects/%d/ /app/", projectId);
+            String initialSyncCmd = String.format("rm -rf /app/* && mc mirror --overwrite myminio/%s/%d/ /app/", bucketName, projectId);
             execCommand(podName, "syncer", "sh", "-c", initialSyncCmd);
 
-            String watchCmd = String.format("nohup mc mirror --overwrite --watch myminio/projects/%d/ /app/ > /app/sync.log 2>&1 &", projectId);
+            String watchCmd = String.format("nohup mc mirror --overwrite --watch myminio/%s/%d/ /app/ > /app/sync.log 2>&1 &", bucketName, projectId);
             execCommand(podName, "syncer", "sh", "-c", watchCmd);
 
             String startCmd = "npm install && nohup npm run dev -- --host 0.0.0.0 --port 5173 > /app/dev.log 2>&1 &";

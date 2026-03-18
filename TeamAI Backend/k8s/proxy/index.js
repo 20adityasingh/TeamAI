@@ -43,7 +43,7 @@ async function getTarget(hostname){
 } 
 
 const getTargetUrl = (target) => {
-    return ip.includes (':') ? `http://${target}` : `http://${target}:5173`
+    return target.includes(':') ? `http://${target}` : `http://${target}:5173`
 }
 
 const server = http.createServer(async (req, res) => {
@@ -58,7 +58,7 @@ const server = http.createServer(async (req, res) => {
         return res.end(`Preview not found for ${hostname}.`);
     }
 
-    const target = getTargetUrl(targetIpOrSvc);
+    const target = getTargetUrl(targetIp);
     console.log(`HTTP : ${hostname} -> ${target}${req.url}`);
 
     proxy.web(req, res, { target }, (e) => {
