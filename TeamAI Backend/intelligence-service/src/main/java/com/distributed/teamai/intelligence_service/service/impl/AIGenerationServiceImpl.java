@@ -112,9 +112,10 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                     if (fullResponseBuffer.length() > 0 && endTime.get() > 0) {
                         Long duration = (endTime.get() - startTime.get()) / 1000;
                         log.info("Finalizing stream with signal: {}. Duration: {}s", signal, duration);
+                        String fullResponse = fullResponseBuffer.toString();
                         Schedulers.boundedElastic().schedule(() -> {
                             try {
-                                finalizeChats(userId, message, chatSession, fullResponseBuffer.toString(), duration,
+                                finalizeChats(userId, message, chatSession, fullResponse, duration,
                                         usageRef.get());
                             } catch (Exception e) {
                                 log.error("Failed to finalize chats for project {}: {}", projectId, e.getMessage(), e);
