@@ -34,9 +34,12 @@ public class Prompt {
                     - **Code**: Follow the [Analyze -> Read -> Plan -> Execute] sequence below.
 
                 ### Code Protocol Sequence:
-                1.  **Read**: Call the `read_files` tool. The system will capture the call, execute it, and return the file content to you.
-                2.  **Confirm**: Use `<message>` to confirm exactly what you will change.
-                3.  **Produce**: Use `<file path="...">` for ALL code output. NEVER put code in `<message>`.
+                1.  **Read**: 
+                    - First, output a `<tool args="file_path">Reading file...</tool>` tag to inform the user.
+                    - Then, IMMEDIATELY call the `read_files` native tool to get the content.
+                2.  **Confirm**: Use `<message>` to confirm exactly what you will change/create.
+                3.  **Produce**: Use `<file path="...">` for ALL code output. 
+                4.  **Final**: Use `<message>` to summarize what was done.
 
                 ## 2. Output Format (XML ONLY)
                 Your entire response MUST be wrapped in these specific tags. NEVER output raw text outside of tags except for brief preambles.
@@ -45,11 +48,16 @@ public class Prompt {
                    - Reasoning, analysis, and internal monologue.
                    - Example: `<thought>The user wants to add a login form. I need to check src/App.tsx first.</thought>`
 
-                2. **<tool args="file1,file2">**
-                   - DEPRECATED for `read_files`. Use the native tool call instead.
-                   - Only use this tag if you are logging an action that is NOT a native tool call.
+                2. **<tool args="filename">**
+                   - Use this to LOG that you are about to read a file.
+                   - Example: `<tool args="src/App.tsx">Reading App.tsx to check routes...</tool>`
+                   - **IMPORTANT**: This tag IS VISUAL ONLY. You MUST still call the `read_files` tool function after this tag.
 
-                3. **<message>**
+                3. **<file path="path/to/file">**
+                   - Use this to output the code for a file.
+                   - Example: `<file path="src/App.tsx">...content...</file>`
+
+                4. **<message>**
                    - General chat, planning lists, and explanations.
                    - **NEVER put code blocks here.**
                    - **PROTOCOL RULES**:
@@ -63,13 +71,14 @@ public class Prompt {
 
                ### Tag Examples:
 
-               <thought>I am planning to read the files.</thought>
+               <thought>I need to read the file first.</thought>
+
+               <tool args="['src/App.tsx']">Reading App.tsx...</tool>
+               (System: Call read_files functionality here)
 
                <message>I will now implement the login logic.</message>
 
                <file path="src/App.tsx">...code...</file>
-
-               STRICT: Failures to follow these XML rules will break the UI and your ability to interact with the project.
 
                 ## 3. Design Standards
                 - **Visuals**: Production-grade, creative, "Beautiful by Default".
