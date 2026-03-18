@@ -59,49 +59,70 @@ public class LlmResponseParser {
             int contentEnd = findContentEnd(fullResponse, tagName, contentStart);
             String content = fullResponse.substring(contentStart, contentEnd).trim();
 
-            // Ignore empty fragments and noise
-            if (content.isEmpty() && !tagName.equals("thought")) {
-               // We keep empty thoughts to trigger the thinking bar, but skip others if totally empty
-               if (!tagName.equals("message") && !tagName.equals("tool") && !tagName.equals("file")) continue;
-            }
-
-            // Cleanup any leaked trailing tag fragments in the content.
-            content = content.replaceAll("(?i)</?[a-z]+>?$", "").trim();
-
-            Map<String, String> mapAttr = extractAttributes(attributes);
-
-            ChatEvent.ChatEventBuilder builder = ChatEvent.builder()
-                    .status(ChatEventStatus.COMPLETED)
-                    .chatMessage(chatMessage)
-                    .content(content);
-
-            switch (tagName) {
-                case "thought" -> builder.chatType(ChatEventType.THOUGHT);
-                case "message" -> builder.chatType(ChatEventType.MESSAGE);
-                case "file" -> {
-                    String path = mapAttr.get("path");
-                    if (path == null || path.isEmpty()) {
-                        log.warn("Skipping file edit event due to missing path attribute.");
-                        continue; // Skip this fragment if no path provided
-                    }
-                    builder.chatType(ChatEventType.FILE_EDIT);
-                    builder.status(ChatEventStatus.PENDING);
-                    builder.filePath(path);
-                }
-                case "tool" -> {
-                    builder.chatType(ChatEventType.TOOL_LOG);
-                    builder.metadata(mapAttr.get("args"));
-                }
-            }
-            rawEvents.add(builder.build());
+            // 1. ALWAYS calculate the next cursor position first to prevent infinite loops
             int nextCursor = contentEnd;
             Pattern closingTagPattern = Pattern.compile("</\\s*" + Pattern.quote(tagName) + "\\s*>", Pattern.CASE_INSENSITIVE);
             Matcher closingMatcher = closingTagPattern.matcher(fullResponse);
             if (closingMatcher.find(contentStart) && closingMatcher.start() == contentEnd) {
                 nextCursor = closingMatcher.end();
             }
+            int newCursorPosition = Math.max(nextCursor, matcher.end());
 
-            cursor = Math.max(nextCursor, matcher.end());
+            // 2. Check if we should ignore this fragment
+            boolean isIgnorableEmpty = content.isEmpty() && !tagName.equals("thought")
+                    && !tagName.equals("message") && !tagName.equals("tool") && !tagName.equals("file");
+
+            if (!isIgnorableEmpty) {
+
+                // 3. FIX: Only clean up trailing tag fragments for non-file content
+                // This prevents deleting valid JSX closing tags (like </div>) in your React code.
+                if (!tagName.equals("file")) {
+                    content = content.replaceAll("(?i)</?[a-z]+>?$", "").trim();
+                }
+
+                Map<String, String> mapAttr = extractAttributes(attributes);
+
+                ChatEvent.ChatEventBuilder builder = ChatEvent.builder()
+                        .status(ChatEventStatus.COMPLETED)
+                        .chatMessage(chatMessage)
+                        .content(content);
+
+                boolean isValidEvent = true; // Use a flag instead of 'continue'
+
+                switch (tagName) {
+                    case "thought" -> builder.chatType(ChatEventType.THOUGHT);
+                    case "message" -> builder.chatType(ChatEventType.MESSAGE);
+                    case "file" -> {
+                        String path = mapAttr.get("path");
+                        if (path == null || path.isEmpty()) {
+                            log.warn("Skipping file edit event due to missing path attribute.");
+                            isValidEvent = false;
+                        } else {
+                            builder.chatType(ChatEventType.FILE_EDIT);
+                            builder.status(ChatEventStatus.PENDING);
+                            builder.filePath(path);
+
+                            // STRIP MARKDOWN BACKTICKS
+                            String cleanContent = content
+                                    .replaceAll("^```[a-zA-Z]*\\n?", "") // Removes opening ```tsx
+                                    .replaceAll("\\n?```$", "")          // Removes closing ```
+                                    .trim();
+                            builder.content(cleanContent);
+                        }
+                    }
+                    case "tool" -> {
+                        builder.chatType(ChatEventType.TOOL_LOG);
+                        builder.metadata(mapAttr.get("args"));
+                    }
+                }
+
+                if (isValidEvent) {
+                    rawEvents.add(builder.build());
+                }
+            }
+
+            // 4. Update the cursor safely
+            cursor = newCursorPosition;
         }
 
         // Fallback: If no tags were found at all, treat the whole thing as one message

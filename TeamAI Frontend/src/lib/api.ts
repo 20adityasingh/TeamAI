@@ -301,17 +301,14 @@ export const api = {
   },
 
   async streamChat(
-    projectId: string,
-    content: string,
-    onChunk: (text: string) => void,
-    onFile: (path: string, content: string) => void,
-    onComplete: () => void,
-    onError: (error: Error) => void,
-    signal?: AbortSignal
+      projectId: string,
+      content: string,
+      onChunk: (text: string) => void,
+      onFile: (path: string, content: string) => void,
+      onComplete: () => void,
+      onError: (error: Error) => void,
+      signal?: AbortSignal
   ) {
-    // The original code used a local AbortController and returned its abort function.
-    // The instruction implies passing an external signal.
-    // We will use the provided signal if available, otherwise create a local one.
     const localController = signal ? undefined : new AbortController();
     const effectiveSignal = signal || localController?.signal;
 
@@ -321,118 +318,121 @@ export const api = {
       body: JSON.stringify({ message: content, projectId }),
       signal: effectiveSignal,
     })
-      .then(async (response) => {
-        if (response.status === 401) {
-          removeAuthToken();
-          removeUserInfo();
-          window.location.href = "/login";
-          throw new Error("Session expired. Please login again.");
-        }
+        .then(async (response) => {
+          if (response.status === 401) {
+            removeAuthToken();
+            removeUserInfo();
+            window.location.href = "/login";
+            throw new Error("Session expired. Please login again.");
+          }
 
-        if (!response.ok) {
+          if (!response.ok) {
             const errorText = await response.text();
             let errorMessage = "Chat stream failed";
             try {
-                const errorJson = JSON.parse(errorText);
-                if (errorJson.message) errorMessage = errorJson.message;
+              const errorJson = JSON.parse(errorText);
+              if (errorJson.message) errorMessage = errorJson.message;
             } catch (e) {
-                if (errorText) errorMessage = errorText;
+              if (errorText) errorMessage = errorText;
             }
             throw new Error(errorMessage);
-        }
+          }
 
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("No reader available");
+          const reader = response.body?.getReader();
+          if (!reader) throw new Error("No reader available");
 
-        const decoder = new TextDecoder();
+          const decoder = new TextDecoder();
+          let sseBuffer = "";
+          let fullContentBuffer = "";
 
-        // Buffers
-        let sseBuffer = ""; // To handle split SSE lines
-        let fullContentBuffer = ""; // To accumulate clean text for file regex
-        let lastProcessedIndex = 0; // Optimization for regex
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            sseBuffer += chunk;
 
-          const chunk = decoder.decode(value, { stream: true });
-          sseBuffer += chunk;
+            const lines = sseBuffer.split("\n");
+            sseBuffer = lines.pop() || "";
 
-          // Process line by line to handle SSE format (data: ...)
-          const lines = sseBuffer.split("\n");
-          sseBuffer = lines.pop() || "";
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (!trimmedLine || !trimmedLine.startsWith("data:")) continue;
 
-          for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine || !trimmedLine.startsWith("data:")) continue;
+              const dataStr = line.slice(5).trim();
+              if (!dataStr) continue;
 
-            const dataStr = trimmedLine.slice(5).trim();
-            if (!dataStr) continue;
+              let content = dataStr;
 
-            try {
-              // FIX: Parse JSON to get the real text with newlines preserved
-              const parsed = JSON.parse(dataStr);
-              const content = parsed.text;
-
-              // 1. Send clean text to UI
-              onChunk(content);
-
-              // 2. Accumulate for file parsing
-              fullContentBuffer += content;
-              
-              const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)')\s*>([\s\S]*?)<\/file>/gi;
-              fileRegex.lastIndex = lastProcessedIndex;
-              
-              let match;
-              while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
-                const path = match[1] || match[2];
-                const fileContent = match[3];
-                onFile(path, fileContent.trim());
-                lastProcessedIndex = fileRegex.lastIndex;
+              // 1. FIX: Safely handle both JSON and raw string formats
+              try {
+                const parsed = JSON.parse(dataStr);
+                if (parsed.text !== undefined) {
+                  content = parsed.text;
+                } else if (typeof parsed === 'string') {
+                  content = parsed;
+                }
+              } catch (e) {
+                // If it's not JSON, it's a raw Spring WebFlux string.
+                // We just use dataStr as-is.
               }
 
-            } catch (e) {
-              console.error("Failed to parse SSE JSON:", e);
+              if (!content) continue;
+
+              // Send chunk to Chat UI
+              onChunk(content);
+
+              // Add to buffer for file parsing
+              fullContentBuffer += content;
+
+              // 2. FIX: Safely extract files without lastIndex tracking bugs
+              // We parse the entire buffer every time to catch completed files
+              const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)'|([^\s>]+))\s*>([\s\S]*?)<\/file>/gi;
+              let match;
+              while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
+                const path = match[1] || match[2] || match[3];
+                let fileContent = match[4].trim();
+
+                // 3. FIX: Strip markdown backticks before sending to PreviewPanel
+                fileContent = fileContent
+                    .replace(/^```[a-zA-Z]*\n?/i, '')
+                    .replace(/\n?```$/i, '')
+                    .trim();
+
+                if (path && fileContent) {
+                  onFile(path, fileContent);
+                }
+              }
             }
           }
-        }
 
-        // Final flush: Process any remaining data in sseBuffer
-        if (sseBuffer.trim()) {
-            const line = sseBuffer.trim();
-            if (line.startsWith("data:")) {
-            const dataStr = line.slice(5).trim();
-            if (dataStr) {
-                try {
-                const parsed = JSON.parse(dataStr);
-                const content = parsed.text;
-                onChunk(content);
-                fullContentBuffer += content;
-                
-                // Final regex check
-                const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)')\s*>([\s\S]*?)<\/file>/gi;
-                fileRegex.lastIndex = lastProcessedIndex;
-                let match;
-                while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
-                    const path = match[1] || match[2];
-                    const fileContent = match[3];
-                    onFile(path, fileContent.trim());
-                }
-                } catch (e) {
-                console.error("Failed to parse final SSE JSON:", e);
-                }
-            }
-            }
-        }
+          // Final flush for any remaining data in sseBuffer
+          if (sseBuffer.trim().startsWith("data:")) {
+            // Same logic as above for the final piece...
+            let content = sseBuffer.trim().slice(5).trim();
+            try { content = JSON.parse(content).text || content; } catch {}
 
-        onComplete();
-      })
-      .catch((error) => {
-        if (error.name !== "AbortError") {
-          console.error("Stream error:", error);
-          onError(error);
-        }
-      });
+            if (content) {
+              onChunk(content);
+              fullContentBuffer += content;
+              const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)'|([^\s>]+))\s*>([\s\S]*?)<\/file>/gi;
+              let match;
+              while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
+                const path = match[1] || match[2] || match[3];
+                let fileContent = match[4].trim().replace(/^```[a-zA-Z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+                if (path && fileContent) onFile(path, fileContent);
+              }
+            }
+          }
+
+          onComplete();
+        })
+        .catch((error) => {
+          if (error.name !== "AbortError") {
+            console.error("Stream error:", error);
+            onError(error);
+          }
+        });
 
     return () => {
       if (localController) {

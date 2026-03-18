@@ -97,9 +97,8 @@ public class AIGenerationServiceImpl implements AiGenerationService {
                         String content = response.getResult().getOutput().getText();
 
                         if (content != null && !content.isEmpty()) {
-                            if (endTime.get() == 0) {
-                                endTime.set(System.currentTimeMillis());
-                            }
+                            endTime.set(System.currentTimeMillis());
+
                             fullResponseBuffer.append(content);
                         }
                     } else {
@@ -199,30 +198,31 @@ public class AIGenerationServiceImpl implements AiGenerationService {
             assistantChatMessage = chatMessageRepository.save(assistantChatMessage);
 
 
-        List<ChatEvent> events = llmResponseParser.parserChatEvents(fullResponse, assistantChatMessage);
+            List<ChatEvent> events = llmResponseParser.parserChatEvents(fullResponse, assistantChatMessage);
 
-        events.stream()
-                .filter(e -> e.getChatType() == ChatEventType.FILE_EDIT)
-                .forEach(e -> {
-                    String sagaId = UUID.randomUUID().toString();
-                    e.setSagaId(sagaId);
-                    FileStoreRequestEvent fileStoreRequestEvent = new FileStoreRequestEvent(
-                            userId,
-                            projectId,
-                            sagaId,
-                            e.getFilePath(),
-                            e.getContent()
-                    );
-                    log.info("Emitting FileStoreRequestEvent for file: {} in project: {}", e.getFilePath(), projectId);
-                    kafkaTemplate.send("file-store-requests-event", "project-" + projectId, fileStoreRequestEvent)
-                            .whenComplete((result, ex) -> {
-                                if (ex == null) {
-                                    log.info("Successfully sent FileStoreRequestEvent for file: {}", e.getFilePath());
-                                } else {
-                                    log.error("Failed to send FileStoreRequestEvent for file: {}. Error: {}", e.getFilePath(), ex.getMessage());
-                                }
-                            });
-                });
+            // 1. Generate Saga IDs for file edits BEFORE saving
+            events.stream()
+                    .filter(e -> e.getChatType() == ChatEventType.FILE_EDIT)
+                    .forEach(e -> e.setSagaId(UUID.randomUUID().toString()));
+
+            // 2. SAVE TO DATABASE FIRST
+            log.info("Saving {} chat events to database for project {}", events.size(), projectId);
+            List<ChatEvent> savedEvents = chatEventRepository.saveAll(events);
+
+            // 3. NOW PUBLISH TO KAFKA
+            savedEvents.stream()
+                    .filter(e -> e.getChatType() == ChatEventType.FILE_EDIT)
+                    .forEach(e -> {
+                        FileStoreRequestEvent fileStoreRequestEvent = new FileStoreRequestEvent(
+                                userId,
+                                projectId,
+                                e.getSagaId(),
+                                e.getFilePath(),
+                                e.getContent()
+                        );
+                        log.info("Emitting FileStoreRequestEvent for file: {} with saga: {}", e.getFilePath(), e.getSagaId());
+                        kafkaTemplate.send("file-store-requests-event", "project-" + projectId, fileStoreRequestEvent);
+                    });
 
         log.info("Saving {} chat events to database for project {}", events.size(), projectId);
         chatEventRepository.saveAll(events);
