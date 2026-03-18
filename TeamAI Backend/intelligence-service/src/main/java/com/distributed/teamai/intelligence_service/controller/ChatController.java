@@ -29,21 +29,10 @@ public class ChatController {
                         @RequestBody ChatRequest request) {
                 return aiGenerationService.streamResponse(request.message(), request.projectId())
                                 .map(data -> ServerSentEvent.<String>builder()
-                                                .data("{\"text\":" + escapeJson(data) + "}")
+                                                .data(data)
                                                 .build());
         }
 
-        private String escapeJson(String value) {
-                if (value == null)
-                        return "null";
-                return "\"" + value
-                                .replace("\\", "\\\\")
-                                .replace("\"", "\\\"")
-                                .replace("\n", "\\n")
-                                .replace("\r", "\\r")
-                                .replace("\t", "\\t")
-                                + "\"";
-        }
 
         @GetMapping(value = "/projects/{projectId}")
         public ResponseEntity<List<ChatResponse>> getChatHistory(
