@@ -359,7 +359,7 @@ export const api = {
               const trimmedLine = line.trim();
               if (!trimmedLine || !trimmedLine.startsWith("data:")) continue;
 
-              const dataStr = line.slice(5).trim();
+              const dataStr = line.slice(5);
               if (!dataStr) continue;
 
               let content = dataStr;

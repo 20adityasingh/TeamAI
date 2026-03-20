@@ -14,7 +14,10 @@ const extractAttributes = (attrString: string) => {
 
 export const useStreamParser = (streamBuffer: string) => {
   return useMemo(() => {
-    const normalizedBuffer = normalizeMalformedTags(streamBuffer);
+    // Strip any trailing incomplete tag fragment (e.g. "</though" or "<messag")
+    // so partial tags don't leak into the rendered UI during live streaming.
+    const sanitizedBuffer = streamBuffer.replace(/<[^>]*$/, '');
+    const normalizedBuffer = normalizeMalformedTags(sanitizedBuffer);
     const OPEN_TAG_REGEX = /<\s*(thought|message|tool|file)\b([^>]*)>/gi;
 
     const rawEvents: ChatEvent[] = [];
