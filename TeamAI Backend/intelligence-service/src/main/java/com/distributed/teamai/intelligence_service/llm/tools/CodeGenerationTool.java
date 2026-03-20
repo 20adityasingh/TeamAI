@@ -28,17 +28,18 @@ public class CodeGenerationTool {
         List<String> result = new ArrayList<>();
 
         for(String path: paths){
-
-            String cleanPath = path.startsWith("/")? path.substring(1) : path;
-
-            String content  = workspaceClient.getFileContent(projectId, cleanPath);
-
-            result.add(
-                    String.format(
-                            "---START OF FILE: %s---\n%s\n---END OF FILE---", cleanPath, content
-                    )
-            );
-
+            try {
+                String cleanPath = path.startsWith("/")? path.substring(1) : path;
+                String content  = workspaceClient.getFileContent(projectId, cleanPath);
+                result.add(
+                        String.format(
+                                "---START OF FILE: %s---\n%s\n---END OF FILE---", cleanPath, content
+                        )
+                );
+            } catch (Exception e) {
+                log.error("Error reading file {}: {}", path, e.getMessage());
+                result.add(String.format("---ERROR READING FILE: %s---\nFile not found or access denied.", path));
+            }
         }
 
         return result;
