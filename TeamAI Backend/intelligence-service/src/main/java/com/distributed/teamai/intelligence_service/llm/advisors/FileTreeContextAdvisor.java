@@ -20,6 +20,7 @@ import reactor.core.publisher.Flux;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 
 @Slf4j
@@ -61,18 +62,20 @@ public class FileTreeContextAdvisor implements StreamAdvisor {
             allMessage.add(systemMessage);
         }
 
-        List<FileNode> paths = workspaceClient.getFileTree(projectId).files();
-
-        String filePathTree = "\n\n ---FILE_TREE--- \n" + paths.toString();
-
+        List<FileNode> nodes = workspaceClient.getFileTree(projectId).files();
+        
+        // Condensed File List (Flat paths)
+        String filePathTree = "\n\n--- CURRENT FILE TREE ---\n" + 
+                nodes.stream()
+                .map(FileNode::path)
+                .collect(Collectors.joining("\n"));
+        
         allMessage.add(new SystemMessage(filePathTree));
-
         allMessage.addAll(userMessage);
 
         return request.mutate()
                 .prompt(new Prompt(allMessage, request.prompt().getOptions()))
                 .build();
-
     }
 
     @Override
