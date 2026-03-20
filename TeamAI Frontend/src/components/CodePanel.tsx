@@ -8,6 +8,7 @@ import { FileNode } from "@/lib/types";
 interface CodePanelProps {
   projectId: string;
   updatedFiles: Map<string, string>;
+  refreshKey?: number;
 }
 
 // Helper to find a file by path in the tree
@@ -23,7 +24,7 @@ function findFileInTree(files: FileNode[], targetPath: string): boolean {
 const getTabsKey = (projectId: string) => `${OPEN_TABS_KEY}_${projectId}`;
 const getActiveTabKey = (projectId: string) => `${ACTIVE_TAB_KEY}_${projectId}`;
 
-export function CodePanel({ projectId, updatedFiles }: CodePanelProps) {
+export function CodePanel({ projectId, updatedFiles, refreshKey }: CodePanelProps) {
   const [files, setFiles] = useState<FileNode[]>([]);
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
@@ -95,7 +96,7 @@ export function CodePanel({ projectId, updatedFiles }: CodePanelProps) {
     };
 
     loadFiles();
-  }, [projectId]);
+  }, [projectId, refreshKey]);
 
   // Load file content when active tab changes
   useEffect(() => {
@@ -124,7 +125,7 @@ export function CodePanel({ projectId, updatedFiles }: CodePanelProps) {
     };
 
     loadContent();
-  }, [projectId, activeTab, updatedFiles]);
+  }, [projectId, activeTab, updatedFiles, refreshKey]);
 
   // Update content when streaming updates arrive for active file
   useEffect(() => {

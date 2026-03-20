@@ -32,6 +32,7 @@ export function ProjectView() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [runtimeError, setRuntimeError] = useState<RuntimeError | null>(null);
   const [project, setProject] = useState<ProjectResponse | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Rename state
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
@@ -188,6 +189,8 @@ export function ProjectView() {
         );
         setIsStreaming(false);
         abortControllerRef.current = null;
+        // Trigger CodePanel to re-fetch files from backend after AI finishes editing
+        setRefreshKey(prev => prev + 1);
       },
       (error) => {
         // Handle error (including cancellation)
@@ -476,7 +479,7 @@ export function ProjectView() {
             <div className="h-full">
               <div className="h-full relative">
                 <div className={cn("h-full absolute inset-0", viewMode !== "code" && "hidden")}>
-                  <CodePanel projectId={projectId} updatedFiles={updatedFiles} />
+                  <CodePanel projectId={projectId} updatedFiles={updatedFiles} refreshKey={refreshKey} />
                 </div>
                 <div className={cn("h-full absolute inset-0", viewMode !== "preview" && "hidden")}>
                   <PreviewPanel

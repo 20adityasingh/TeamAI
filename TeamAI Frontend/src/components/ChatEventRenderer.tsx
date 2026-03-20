@@ -10,6 +10,25 @@ import {
 import { ChatEvent, ChatEventType } from '@/lib/types';
 import { CollapsibleSection } from './CollapsibleSection';
 
+/**
+ * Re-inserts newlines before markdown structural markers that were
+ * stripped during SSE transport (Spring SSE drops \n tokens).
+ * Only applied to MESSAGE content — never to code/file content.
+ */
+function repairMarkdown(text: string): string {
+  return text
+    // Ensure double newline before markdown headers (## ... ######)
+    .replace(/([^\n])(#{1,6}\s)/g, '$1\n\n$2')
+    // Ensure newline before numbered list items (1. 2. 3.)
+    .replace(/([^\n])(\d+\.\s)/g, '$1\n$2')
+    // Ensure newline before bullet list items (- or *)
+    .replace(/([^\n])([-*]\s)/g, '$1\n$2')
+    // Ensure newline before code fences
+    .replace(/([^\n])(```)/g, '$1\n$2')
+    // Ensure newline before bold section starts that look like labels ("**Name**:")
+    .replace(/([.!?])\s*(\*\*[A-Z])/g, '$1\n\n$2');
+}
+
 export const ChatEventRenderer = ({ event, isLoading }: { event: ChatEvent, isLoading?: boolean }) => {
   switch (event.type) {
     case ChatEventType.THOUGHT:
@@ -81,7 +100,7 @@ export const ChatEventRenderer = ({ event, isLoading }: { event: ChatEvent, isLo
       return (
         <div className="prose prose-invert prose-sm max-w-none text-[#ececec] leading-relaxed mb-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {event.content}
+            {repairMarkdown(event.content)}
           </ReactMarkdown>
           {isLoading && <span className="inline-block w-1.5 h-4 ml-1 bg-primary animate-pulse align-middle" />}
         </div>
