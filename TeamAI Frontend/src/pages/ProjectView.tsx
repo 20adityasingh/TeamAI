@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Code, Sparkles, LogOut, RotateCcw, Maximize2, RefreshCw, MoreVertical, Trash, Download, Edit } from "lucide-react";
+import { Code, Sparkles, LogOut, RotateCcw, Maximize2, RefreshCw, MoreVertical, Trash, Download, Edit, ArrowLeft } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { ChatPanel, ChatMessage } from "@/components/ChatPanel";
 import { CodePanel } from "@/components/CodePanel";
@@ -329,6 +329,14 @@ export function ProjectView() {
       {/* Header */}
       <header className="h-12 shrink-0 border-b border-border/50 bg-panel flex items-center justify-between px-3">
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/projects")}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
           {project ? (
             <>
               <div
