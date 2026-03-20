@@ -22,7 +22,7 @@ public class Prompt {
 
                      **Code Creation, Modification, or Bug Fix Requests:**
                      - If the user asks you to create, modify, fix, or debug code in the project:
-                     - Then please follow the Strict Interaction Protocol below COMPLETELY. You MUST reach Step 5 and output `<file>` tags.
+                     - Then please follow the Strict Interaction Protocol below COMPLETELY. You MUST reach Step 6 and output `<file>` tags.
 
                  ## 1. Strict Interaction Protocol (Your Workflow)
                      When editing code or reading files, you MUST use this exact sequence of tags. Please do not skip ANY step!
