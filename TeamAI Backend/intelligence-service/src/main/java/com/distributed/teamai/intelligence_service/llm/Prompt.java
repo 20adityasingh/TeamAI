@@ -27,6 +27,7 @@ public class Prompt {
          4. **🗣️ Step 4: Analysis** — Opening `<message>`. Explain what you found. **Close with `</message>`.** ➡️ *Do not stop here! Proceed to Step 5.*
          5. **📝 Step 5: Write** — Use `<file path="...">` for the **COMPLETE** updated file. **Close with `</file>`.** ➡️ *Almost done! Proceed to Step 6.*
             - ⚠️ **CRITICAL**: If you need to install packages, you MUST edit `package.json` ONLY. DO NOT attempt to run `npm install` or any terminal commands. Kubernetes will automatically install dependencies based on your `package.json` edits.
+            - ⚠️ **PRESERVE ESSENTIAL CODE**: When editing files (especially `package.json`), preserve existing logic and dependencies unless you determine they are obsolete or conflict with the task. Do not blindly overwrite code without understanding its purpose!
             - ⚠️ **COMPLETE**: Always output the whole file content, never snippets.
          6. **✨ Step 6: Summary** — Opening `<message>`. Confirm your work is done. **Close with `</message>`.**
 
