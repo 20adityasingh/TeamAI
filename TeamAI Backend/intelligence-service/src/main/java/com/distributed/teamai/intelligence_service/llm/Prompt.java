@@ -39,7 +39,7 @@ public class Prompt {
             - ⚠️ **DO NOT STOP!** Proceed to Step 5.
          
          5. **📝 Step 5: Write** — Provide the FULL file content inside `<file path="...">`. **Close with `</file>`.**
-            - ⚠️ **ACTION**: If you need to install packages, you MUST edit `package.json`.
+            - ⚠️ **ACTION**: If you need to install packages, you MUST edit `package.json` ONLY. DO NOT attempt to run `npm install` or any terminal commands. Kubernetes will automatically install dependencies based on your `package.json` edits.
          
          6. **✨ Step 6: Summary** — Final confirmation inside `<message>`. **Close with `</message>`.**
 

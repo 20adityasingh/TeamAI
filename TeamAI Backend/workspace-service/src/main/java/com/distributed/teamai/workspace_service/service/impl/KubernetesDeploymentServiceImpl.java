@@ -66,7 +66,16 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
         Pod existingPod = findActivePod(projectId);
 
         if (existingPod != null) {
-            log.info("Found existing pod {} for project {}. Resuming...", existingPod.getMetadata().getName(), projectId);
+            String podName = existingPod.getMetadata().getName();
+            log.info("Found existing pod {} for project {}. Resuming...", podName, projectId);
+            
+            try {
+                // Run incremental npm install to catch any AI-generated package.json updates
+                execCommand(podName, "runner", "sh", "-c", "npm install");
+            } catch (Exception e) {
+                log.warn("Failed to run incremental npm install on pod {}: {}", podName, e.getMessage());
+            }
+
             registerRoute(domain, existingPod);
             return new DeployResponse(formattedUrl);
         }

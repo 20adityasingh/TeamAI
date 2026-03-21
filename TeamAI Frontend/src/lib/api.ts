@@ -344,6 +344,7 @@ export const api = {
           const decoder = new TextDecoder();
           let sseBuffer = "";
           let fullContentBuffer = "";
+          let eventData: string[] = [];
 
           while (true) {
             const { done, value } = await reader.read();
@@ -355,66 +356,78 @@ export const api = {
             const lines = sseBuffer.split("\n");
             sseBuffer = lines.pop() || "";
 
-            for (const line of lines) {
-              const trimmedLine = line.trim();
-              if (!trimmedLine || !trimmedLine.startsWith("data:")) continue;
+            for (let i = 0; i < lines.length; i++) {
+              let line = lines[i];
+              if (line.endsWith("\r")) line = line.slice(0, -1);
 
-              const dataStr = line.slice(5);
-              if (!dataStr) continue;
+              if (line === "") {
+                // Event boundary!
+                if (eventData.length > 0) {
+                  const dataStr = eventData.join("\n");
+                  eventData = []; // clear for next event
 
-              let content = dataStr;
-              try {
-                const parsed = JSON.parse(dataStr);
-                if (typeof parsed === "string") {
-                  content = parsed;
-                } else if (parsed && typeof parsed === "object" && "text" in parsed) {
-                  content = parsed.text;
+                  let content = dataStr;
+                  try {
+                    const parsed = JSON.parse(dataStr);
+                    if (typeof parsed === "string") {
+                      content = parsed;
+                    } else if (parsed && typeof parsed === "object" && "text" in parsed) {
+                      content = parsed.text;
+                    }
+                  } catch (_) {}
+
+                  if (content) {
+                    onChunk(content);
+                    fullContentBuffer += content;
+
+                    const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)'|([^\s>]+))\s*>([\s\S]*?)<\/file>/gi;
+                    let match;
+                    while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
+                      const path = match[1] || match[2] || match[3];
+                      let fileContent = match[4].trim();
+                      fileContent = fileContent
+                          .replace(/^```[a-zA-Z]*\n?/i, '')
+                          .replace(/\n?```$/i, '')
+                          .trim();
+                      if (path && fileContent) onFile(path, fileContent);
+                    }
+                  }
                 }
-              } catch (_) {
-                // treat as plain text
-              }
-
-              if (!content) continue;
-
-              onChunk(content);
-              fullContentBuffer += content;
-
-              const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)'|([^\s>]+))\s*>([\s\S]*?)<\/file>/gi;
-              let match;
-              while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
-                const path = match[1] || match[2] || match[3];
-                let fileContent = match[4].trim();
-                fileContent = fileContent
-                    .replace(/^```[a-zA-Z]*\n?/i, '')
-                    .replace(/\n?```$/i, '')
-                    .trim();
-                if (path && fileContent) onFile(path, fileContent);
+              } else if (line.startsWith("data:")) {
+                let data = line.slice(5);
+                if (data.startsWith(" ")) data = data.slice(1);
+                eventData.push(data);
               }
             }
           }
 
-          if (sseBuffer.trim().startsWith("data:")) {
-            const dataStr = sseBuffer.trim().slice(5).trim();
-            if (dataStr) {
-              let content = dataStr;
-              try {
-                const parsed = JSON.parse(dataStr);
-                if (typeof parsed === "string") content = parsed;
-                else if (parsed && typeof parsed === "object" && "text" in parsed) {
-                  content = parsed.text;
-                }
-              } catch (_) {}
+          // Handle any leftover in sseBuffer/eventData if stream ended without a newline boundary
+          if (sseBuffer.startsWith("data:")) {
+            let data = sseBuffer.slice(5);
+            if (data.startsWith(" ")) data = data.slice(1);
+            eventData.push(data);
+          }
 
-              if (content) {
-                onChunk(content);
-                fullContentBuffer += content;
-                const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)'|([^\s>]+))\s*>([\s\S]*?)<\/file>/gi;
-                let match;
-                while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
-                  const path = match[1] || match[2] || match[3];
-                  let fileContent = match[4].trim().replace(/^```[a-zA-Z]*\n?/i, '').replace(/\n?```$/i, '').trim();
-                  if (path && fileContent) onFile(path, fileContent);
-                }
+          if (eventData.length > 0) {
+            const dataStr = eventData.join("\n");
+            let content = dataStr;
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (typeof parsed === "string") content = parsed;
+              else if (parsed && typeof parsed === "object" && "text" in parsed) {
+                content = parsed.text;
+              }
+            } catch (_) {}
+
+            if (content) {
+              onChunk(content);
+              fullContentBuffer += content;
+              const fileRegex = /<file\s+path=(?:"([^"]+)"|'([^']+)'|([^\s>]+))\s*>([\s\S]*?)<\/file>/gi;
+              let match;
+              while ((match = fileRegex.exec(fullContentBuffer)) !== null) {
+                const path = match[1] || match[2] || match[3];
+                let fileContent = match[4].trim().replace(/^```[a-zA-Z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+                if (path && fileContent) onFile(path, fileContent);
               }
             }
           }
