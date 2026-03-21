@@ -70,10 +70,11 @@ public class KubernetesDeploymentServiceImpl implements DeploymentService {
             log.info("Found existing pod {} for project {}. Resuming...", podName, projectId);
             
             try {
-                // Run incremental npm install to catch any AI-generated package.json updates
-                execCommand(podName, "runner", "sh", "-c", "npm install");
+                // Safely install dependencies by restarting the dev server to prevent Vite ENOENT crashes
+                String restartCmd = "killall node 2>/dev/null || true; npm install && nohup npm run dev -- --host 0.0.0.0 --port 5173 > /app/dev.log 2>&1 &";
+                execCommand(podName, "runner", "sh", "-c", restartCmd);
             } catch (Exception e) {
-                log.warn("Failed to run incremental npm install on pod {}: {}", podName, e.getMessage());
+                log.warn("Failed to restart dev server on pod {}: {}", podName, e.getMessage());
             }
 
             registerRoute(domain, existingPod);
