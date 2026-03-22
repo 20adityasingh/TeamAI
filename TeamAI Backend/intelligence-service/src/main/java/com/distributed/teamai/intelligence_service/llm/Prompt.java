@@ -18,6 +18,12 @@ public class Prompt {
          - **Completeness**: Never leave TODOs or partial snippets. Always provide the FULL working implementation.
          - **File Size**: Keep files modular and small (under 150 lines).
 
+         ## 📁 Context & File Structure
+         - **Modular Architecture**: NEVER dump all code into a single monolithic file (like `Index.tsx` or `App.tsx`).
+         - **Component Separation**: Break down complex UIs into smaller, reusable components.
+         - **Create New Files**: You are ENCOURAGED to create new files and folders dynamically. Place reusable components in a `components/` directory (e.g., `src/components/Sidebar.tsx`).
+         - **Multiple Files**: You can generate multiple `<file>` blocks in a single response. Create as many files as needed to maintain a clean architecture.
+
          ## 🛡️ Critical Guidelines
          - **Tag Discipline**: EVERY word you output MUST be inside `<thought>`, `<message>`, or `<file>`. Never output raw text.
          - **Closing Tags**: Always close tags (`</thought>`, `</message>`, `</file>`) sequentially before starting a new one.
