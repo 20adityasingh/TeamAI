@@ -4,6 +4,8 @@ import com.distributed.teamai.intelligence_service.dto.chat.ChatRequest;
 import com.distributed.teamai.intelligence_service.dto.chat.ChatResponse;
 import com.distributed.teamai.intelligence_service.service.AiGenerationService;
 import com.distributed.teamai.intelligence_service.service.ChatService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -23,14 +25,24 @@ public class ChatController {
 
         AiGenerationService aiGenerationService;
         ChatService chatService;
+        ObjectMapper objectMapper;
 
         @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
         public Flux<ServerSentEvent<String>> streamChat(
                         @RequestBody ChatRequest request) {
                 return aiGenerationService.streamResponse(request.message(), request.projectId())
-                                .map(data -> ServerSentEvent.<String>builder()
-                                                .data(data)
-                                                .build());
+                                .map(data -> {
+                                        // JSON-encode so newlines (\n) survive SSE transport
+                                        String jsonData;
+                                        try {
+                                                jsonData = objectMapper.writeValueAsString(data);
+                                        } catch (JsonProcessingException e) {
+                                                jsonData = data;
+                                        }
+                                        return ServerSentEvent.<String>builder()
+                                                .data(jsonData)
+                                                .build();
+                                });
         }
 
 

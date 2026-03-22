@@ -26,7 +26,15 @@ function repairMarkdown(text: string): string {
     // Ensure newline before code fences
     .replace(/([^\n])(```)/g, '$1\n$2')
     // Ensure newline before bold section starts that look like labels ("**Name**:")
-    .replace(/([.!?])\s*(\*\*[A-Z])/g, '$1\n\n$2');
+    .replace(/([.!?])\s*(\*\*[A-Z])/g, '$1\n\n$2')
+    // Paragraph break: sentence end (. ! ?) followed by two+ spaces then capital letter
+    .replace(/([.!?])\s{2,}([A-Z])/g, '$1\n\n$2')
+    // Paragraph break: sentence end followed immediately by capital letter (no space at all = stuck)
+    .replace(/([.!?])([A-Z][a-z])/g, '$1\n\n$2')
+    // Ensure newline before blockquotes
+    .replace(/([^\n])(>\s)/g, '$1\n$2')
+    // Ensure newline before horizontal rules
+    .replace(/([^\n])(---|\*\*\*|___)/g, '$1\n\n$2');
 }
 
 export const ChatEventRenderer = ({ event, isLoading }: { event: ChatEvent, isLoading?: boolean }) => {
