@@ -394,8 +394,7 @@ export const api = {
                   }
                 }
               } else if (line.startsWith("data:")) {
-                let data = line.slice(5);
-                if (data.startsWith(" ")) data = data.slice(1);
+                const data = line.slice(5);
                 eventData.push(data);
               }
             }
@@ -403,8 +402,7 @@ export const api = {
 
           // Handle any leftover in sseBuffer/eventData if stream ended without a newline boundary
           if (sseBuffer.startsWith("data:")) {
-            let data = sseBuffer.slice(5);
-            if (data.startsWith(" ")) data = data.slice(1);
+            const data = sseBuffer.slice(5);
             eventData.push(data);
           }
 
