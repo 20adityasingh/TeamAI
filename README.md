@@ -37,7 +37,7 @@ A stunning, responsive, and dynamic web application engineered for developer exp
 - **Code Intelligence**: `@uiw/react-codemirror` for real-time, syntax-highlighted code editing.
 - **State & Data Fetching**: Zustand (implied) and `@tanstack/react-query` for high-performance server-state synchronization.
 - **Forms & Validation**: `react-hook-form` paired with `zod` schema validation.
-- **Streaming & Parsing**: Highly optimized continuous Server-Sent Events (SSE) stream parsing, capable of recovering stripped Markdown chunks on-the-fly, enabling smooth real-time AI "Thinking" and "Coding" visuals.
+- **Streaming & Parsing**: Highly optimized continuous Server-Sent Events (SSE) stream parsing processing JSON-encoded data. Handles newline restoration flawlessly with aggressive heuristics to rebuild Markdown chunks dynamically and safely stream live AI generation.
 - **Visualizations**: `recharts` for integrated analytics.
 
 ### 🧠 The Backend (Spring Cloud Microservices)
@@ -50,9 +50,9 @@ A completely decoupled, distributed microservices mesh leveraging **Java 21** Vi
 
 - **Intelligence Service (The AI Brain)**:
   - Built on **Spring AI 2.0.0-M2**, communicating concurrently with frontier LLMs (e.g., OpenRouter, OpenAI compatible APIs).
-  - Employs **Advanced Function Calling** (Tools) to dynamically read/write to the Workspace.
+  - Employs **Advanced Function Calling** (Tools) to dynamically read/write to the Workspace. Tool calls are strictly enforced but dynamically triggered optionally to avoid deadlocks.
   - Implements an **Agentic Advisor Pattern** (e.g., `FileTreeContextAdvisor`) to inject dense, compacted context straight into the AI's prompting phase.
-  - Leverages heavily-engineered internal Prompts featuring "Recency Bias" and "Strict 6-Step Validation Protocols" to guarantee autonomous AI reliability.
+  - Leverages heavily-engineered internal Prompts featuring "Recency Bias", a flexible "5-Step Validation Protocol", and rigid architectural directives forcing the AI to generate multiple modular files rather than a monolithic dump.
 
 - **Workspace Service (The Engine Room)**:
   - **Fabric8 Kubernetes Client**: Dynamically provisions and manages runner pods and isolated workspaces directly on the underlying K8s cluster.
@@ -78,11 +78,12 @@ The system relies on high-availability stateful components orchestrated in Kuber
 
 ## 🛠️ Key Technical Achievements
 
-1. **"Sweet but Strict" AI Orchestration**: Solved LLM "instruction fatigue" through prompt engineering, ensuring complex, multi-step actions (Thoughts ➡️ Intent ➡️ Search ➡️ Analysis ➡️ File Edit ➡️ Summary) never stall midway. 
+1. **"Flexible but Strict" AI Orchestration**: Solved LLM "instruction fatigue" through prompt engineering, ensuring complex, multi-step actions (Thoughts ➡️ Intent ➡️ [Optional Search] ➡️ File Edit ➡️ Summary) never stall.
 2. **Crash-Proof Tool Execution**: Bulletproofed backend AI tool execution using Try-Catch safety nets, preventing cascading server failures when an autonomous agent attempts invalid filesystem operations.
 3. **Optimized Context Window Management**: Replaced verbose file tree dumps with condensed, mapped directory structures, effectively curing "Context Bloat" while giving the LLM flawless project vision.
-4. **Resilient Markdown Streaming**: Implemented brilliant frontend fallback mechanisms (`repairMarkdown` regex) that automatically re-insert missing SSE newline characters, restoring perfect code block and header formatting dynamically mid-stream.
-5. **Event-Driven AI Sync**: Decoupled AI token generation from file saving using Apache Kafka. The UI stays incredibly fast while the backend uses Saga/event IDs to eventually-sync code edits to PostgreSQL and MinIO.
+4. **Resilient Markdown Streaming**: Implemented robust backend JSON-serialization for emitted Server-Sent Events, preserving raw newline characters entirely, and layered it with frontend fallback heuristics (`repairMarkdown` regex) that automatically reinsert missing formatting cues dynamically.
+5. **Anti-Monolith File Generation**: Embedded rigid file structure awareness in AI system prompts. Forces language models out of common lazy patterns ("dumping everything in Index.tsx") to instead create highly modular, enterprise-level component hierarchies concurrently. 
+6. **Event-Driven AI Sync**: Decoupled AI token generation from file saving using Apache Kafka. The UI stays incredibly fast while the backend uses Saga/event IDs to eventually-sync code edits to PostgreSQL and MinIO.
 
 ---
 
