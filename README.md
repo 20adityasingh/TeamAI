@@ -25,6 +25,46 @@ This platform isn't just an AI wrapper; it is an **Agentic Orchestration Engine*
 
 ---
 
+## ✨ Platform Preview
+
+Here is a glimpse of the Distributed TeamAI interface and AI-driven workspace:
+
+<div align="center">
+  <img src="docs/images/login.png" alt="Login Screen" width="800"/>
+  <br/>
+  <em>Secure Authentication</em>
+</div>
+<br/>
+
+<div align="center">
+  <img src="docs/images/projects.png" alt="Projects Dashboard" width="800"/>
+  <br/>
+  <em>Projects Dashboard</em>
+</div>
+<br/>
+
+<div align="center">
+  <img src="docs/images/editor-1.png" alt="AI Workspace Engine" width="800"/>
+  <br/>
+  <em>Real-time AI Coding & Cloud Workspace</em>
+</div>
+<br/>
+
+<div align="center">
+  <img src="docs/images/editor-2.png" alt="AI Agent Workflow" width="800"/>
+  <br/>
+  <em>Streaming File Synchronization</em>
+</div>
+<br/>
+
+<div align="center">
+  <img src="docs/images/plans.png" alt="Subscription Plans" width="800"/>
+  <br/>
+  <em>Subscription & Billing Management</em>
+</div>
+
+---
+
 ## 🏗️ Architecture & Advanced Tech Stack
 
 This project is engineered using enterprise-grade, bleeding-edge technologies across the entire stack.
