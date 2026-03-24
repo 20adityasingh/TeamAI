@@ -51,8 +51,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: app-secrets
-                  key: SECRET_KEY
-            # Constructing the host URL for the internal MinIO service
+                  key: SECRET_KE
             - name: MC_HOST_myminio
               value: "http://$(MINIO_USER):$(MINIO_PASS)@minio.distributed-team-ai-ns.svc.cluster.local:9000"
           volumeMounts:
